@@ -1,0 +1,12 @@
+{
+  "name": "WEC Manager",
+  "short_name": "WEC Manager",
+  "description": "Gerencie uma equipe do Mundial de Endurance (WEC).",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#030712",
+  "theme_color": "#030712",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
