@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import { formatMoney } from "../../utils/helpers";
 import { TWO_CAR_SPONSOR_BONUS } from "../../data/constants";
-import { driversPayroll, driversBacking, staffPayroll, facilityUpkeep, sponsorMultiplier, secondCarOperations } from "../../engine/economy";
+import { driversPayroll, staffPayroll, facilityUpkeep, sponsorMultiplier, secondCarOperations } from "../../engine/economy";
 
 // Gráfico simples do saldo ao longo das corridas
 const BalanceChart = ({ entries }) => {
@@ -43,14 +43,13 @@ const FinancesTab = ({ game }) => {
   const expenses = items.filter(item => item.amount < 0).reduce((sum, item) => sum + item.amount, 0);
   const sister = game.sisterTeam;
   const lineups = [player, sister].filter(Boolean);
-  const backing = lineups.reduce((sum, team) => sum + driversBacking(team), 0);
-  const wages = lineups.reduce((sum, team) => sum + driversPayroll(team), 0) + backing;
+  const wages = lineups.reduce((sum, team) => sum + driversPayroll(team), 0);
   const staff = staffPayroll(player);
   const upkeep = facilityUpkeep(player);
   const operations = sister ? secondCarOperations(sister.class) : 0;
   const sponsorMult = sponsorMultiplier(player) * (sister ? 1 + TWO_CAR_SPONSOR_BONUS : 1);
   const sponsors = player.sponsors.reduce((sum, contract) => sum + (contract.type === "GAMBLE" ? contract.maxRandom / 2 : contract.perRacePayment), 0) * sponsorMult;
-  const projected = sponsors + backing - wages - staff - upkeep - operations;
+  const projected = sponsors - wages - staff - upkeep - operations;
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -80,12 +79,6 @@ const FinancesTab = ({ game }) => {
               <span className="text-gray-400">Patrocínios (estimado)</span>
               <span className="font-mono text-green-300">+{formatMoney(sponsors)}</span>
             </div>
-            {backing > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-400">Pilotos pagantes</span>
-                <span className="font-mono text-green-300">+{formatMoney(backing)}</span>
-              </div>
-            )}
             <div className="flex justify-between">
               <span className="text-gray-400">Salários dos pilotos{sister ? " (2 carros)" : ""}</span>
               <span className="font-mono text-red-300">-{formatMoney(wages)}</span>

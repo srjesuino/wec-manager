@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  Award,
   CalendarDays,
   ChartColumn,
   CircleHelp,
@@ -34,7 +33,6 @@ import SponsorsTab from "../components/dashboard/SponsorsTab";
 import FinancesTab from "../components/dashboard/FinancesTab";
 import CalendarTab from "../components/dashboard/CalendarTab";
 import StandingsTab from "../components/dashboard/StandingsTab";
-import AchievementsTab from "../components/dashboard/AchievementsTab";
 import { playerEntries } from "../engine/team";
 
 const TABS = [
@@ -46,8 +44,7 @@ const TABS = [
   { id: "finances", label: "Finanças", title: "Finanças", icon: Wallet, group: "Gestão" },
   { id: "calendar", label: "Calendário", title: "Calendário", icon: CalendarDays, group: "Mundo" },
   { id: "standings", label: "Classificação", title: "Classificação", icon: TrendingUp, group: "Mundo" },
-  { id: "news", label: "Notícias", title: "Centro de Notícias", icon: Globe, group: "Mundo" },
-  { id: "achievements", label: "Conquistas", title: "Conquistas & Recordes", icon: Award, group: "Mundo" }
+  { id: "news", label: "Notícias", title: "Centro de Notícias", icon: Globe, group: "Mundo" }
 ];
 
 const MOBILE_MAIN = ["overview", "car", "drivers"];
@@ -81,8 +78,6 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
         return <CalendarTab game={game} />;
       case "standings":
         return <StandingsTab game={game} />;
-      case "achievements":
-        return <AchievementsTab game={game} />;
       case "news":
         return (
           <div className="h-full flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-500 min-h-[70vh]">
@@ -90,7 +85,7 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
           </div>
         );
       default:
-        return <OverviewTab game={game} onStartWeekend={actions.startWeekend} setActiveTab={setActiveTab} onResolveEvent={actions.resolveEvent} />;
+        return <OverviewTab game={game} onStartWeekend={actions.startWeekend} setActiveTab={setActiveTab} />;
     }
   };
 

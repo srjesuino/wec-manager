@@ -809,25 +809,3 @@ export const TEAM_ORDERS = {
   FREE: { id: "FREE", label: "Disputa livre", description: "Os seus carros podem brigar entre si." },
   HOLD: { id: "HOLD", label: "Manter posições", description: "Nada de disputa interna: quem está atrás segura a posição." }
 };
-
-// Conquistas da carreira
-export const ACHIEVEMENTS = [
-  { id: "first_points", icon: "Flag", title: "Primeiros pontos", description: "Marque pontos em uma corrida." },
-  { id: "first_podium", icon: "Medal", title: "Champanhe", description: "Suba ao pódio da classe." },
-  { id: "first_win", icon: "Trophy", title: "Primeira vitória", description: "Vença uma corrida na classe." },
-  { id: "pole", icon: "Crown", title: "Pole position", description: "Largue na pole da classe." },
-  { id: "lemans_win", icon: "Moon", title: "Rei de Sarthe", description: "Vença as 24 Horas de Le Mans." },
-  { id: "rain_win", icon: "CloudRain", title: "Dança na chuva", description: "Vença uma corrida com chuva." },
-  { id: "comeback", icon: "TrendingUp", title: "Remontada", description: "Ganhe 6 posições ou mais na classe em uma corrida." },
-  { id: "grand_slam", icon: "Zap", title: "Grand Slam", description: "Pole, vitória e volta mais rápida na mesma corrida." },
-  { id: "one_two", icon: "Users", title: "Dobradinha", description: "Termine em 1º e 2º na classe com os seus dois carros." },
-  { id: "double_win", icon: "Sparkles", title: "Dupla vitória", description: "Vença na Hypercar e na LMGT3 no mesmo dia." },
-  { id: "both_podium", icon: "Medal", title: "Dois no pódio", description: "Coloque os dois carros no pódio da classe na mesma corrida." },
-  { id: "survivor", icon: "ShieldCheck", title: "Sobrevivente", description: "Termine todas as corridas de uma temporada sem abandono." },
-  { id: "title", icon: "Trophy", title: "Campeão do mundo", description: "Conquiste um título mundial." },
-  { id: "double_title", icon: "Crown", title: "Coroa dupla", description: "Seja campeão nas duas classes na mesma temporada." },
-  { id: "promotion", icon: "ArrowUpCircle", title: "Subindo de nível", description: "Aceite o convite para a Hypercar." },
-  { id: "rich", icon: "Wallet", title: "Cofre cheio", description: "Tenha $100M em caixa." },
-  { id: "track_record", icon: "Timer", title: "Recordista", description: "Bata o recorde de volta de uma pista." },
-  { id: "veteran", icon: "Briefcase", title: "Veterano do paddock", description: "Complete 5 temporadas no comando." }
-];

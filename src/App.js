@@ -30,7 +30,6 @@ import {
 } from "./engine/economy";
 import { signDriverTo } from "./engine/drivers";
 import { entryById, playerEntries, sharedDevelopment, upgradeCostFor, PLAYER_ID, SISTER_ID } from "./engine/team";
-import { rollPaddockEvent, resolvePaddockEvent } from "./engine/events";
 import MenuScreen from "./screens/MenuScreen";
 import DashboardScreen from "./screens/DashboardScreen";
 import BriefingScreen from "./screens/BriefingScreen";
@@ -297,7 +296,7 @@ function App() {
         playerTeam: { ...withLineup.playerTeam, funds: withLineup.playerTeam.funds - fee - penalty },
         driversPool: [
           ...g.driversPool.filter(d => d.id !== driver.id),
-          ...(leaving ? [{ ...leaving, teamId: null, contractYears: 0, backing: undefined }] : [])
+          ...(leaving ? [{ ...leaving, teamId: null, contractYears: 0 }] : [])
         ]
       };
     });
@@ -350,14 +349,6 @@ function App() {
     notify(`Contrato assinado com ${sponsor.name}. Bônus: ${formatMoney(offer.signingBonus)}.`, "success");
   };
 
-  const resolveEvent = choiceId => {
-    const result = resolvePaddockEvent(game, choiceId);
-    setGame(result.game);
-    if (result.message) {
-      notify(result.message, result.error ? "error" : "success");
-    }
-  };
-
   const markAllRead = () => {
     setGame(g => ({ ...g, newsFeed: g.newsFeed.map(item => ({ ...item, read: true })) }));
   };
@@ -371,12 +362,7 @@ function App() {
     if (!game || game.raceIndex >= TRACKS.length) {
       return;
     }
-    let base = game;
-    if (game.pendingEvent) {
-      notify(`Evento ignorado: ${game.pendingEvent.title}.`, "warn");
-      base = { ...game, pendingEvent: null, lastEventId: game.pendingEvent.templateId };
-    }
-    const withBop = applyBop(base, TRACKS[base.raceIndex]);
+    const withBop = applyBop(game, TRACKS[game.raceIndex]);
     setGame(withBop);
     setWeekend(createWeekend(withBop));
     setWeekendCar(PLAYER_ID);
@@ -386,9 +372,7 @@ function App() {
   // Próximo carro do jogador que ainda não fez a etapa (setup ou volta lançada)
   const nextCarWithout = (key, next) => playerEntries(game).find(team => next[key]?.[team.id] == null);
 
-  const onSetupComplete = rawScore => {
-    const bonus = game.weekendBonus?.setup ?? 0;
-    const score = Math.min(100, rawScore + bonus);
+  const onSetupComplete = score => {
     const next = {
       ...weekend,
       setupScores: { ...weekend.setupScores, [weekendCar]: score },
@@ -396,7 +380,7 @@ function App() {
     };
     setWeekend(next);
     const label = game.sisterTeam ? ` #${entryById(game, weekendCar)?.number}` : "";
-    notify(`Setup${label} finalizado. Eficiência: ${score.toFixed(1)}%${bonus ? ` (inclui +${bonus} do teste privado)` : ""}`);
+    notify(`Setup${label} finalizado. Eficiência: ${score.toFixed(1)}%`);
     const pending = nextCarWithout("setupScores", next);
     if (pending) {
       setWeekendCar(pending.id);
@@ -466,13 +450,11 @@ function App() {
 
   const finishRace = () => {
     const report = buildRaceReport(raceState, game);
-    const { game: applied, summary } = applyRaceResults(game, report);
-    const nextGame = { ...applied, weekendBonus: null };
+    const { game: nextGame, summary } = applyRaceResults(game, report);
     setGame(nextGame);
     setRaceResult({ report, summary });
     setScreen("raceResults");
     generateNews(report, nextGame);
-    summary.achievements.forEach(item => notify(`🏆 Conquista desbloqueada: ${item.title}!`, "success"));
   };
 
   const continueAfterRace = () => {
@@ -483,14 +465,7 @@ function App() {
       setSeasonSummary(buildSeasonSummary(game));
       setScreen("seasonEnd");
     } else {
-      const event = rollPaddockEvent(game);
-      if (event) {
-        setGame(g => ({ ...g, pendingEvent: event }));
-        notify(`Paddock: ${event.title}. Decida na Visão Geral.`, "warn");
-        setActiveTab("overview");
-      } else {
-        setActiveTab("news");
-      }
+      setActiveTab("news");
       setScreen("dashboard");
     }
   };
@@ -540,7 +515,6 @@ function App() {
       "success"
     );
     notify(result.summary.regulation.text, result.summary.regulation.type === "STABLE" ? "info" : "warn");
-    (result.achievements || []).forEach(item => notify(`🏆 Conquista desbloqueada: ${item.title}!`, "success"));
   };
 
   const newCareer = () => {
@@ -582,7 +556,6 @@ function App() {
           setStarter,
           swapDrivers,
           signSponsor,
-          resolveEvent,
           markAllRead,
           exportSaveFile
         }}

@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { ArrowRight, CloudRain, CloudSun, Gauge, Headphones, Moon, Scale, Sun, Target, Timer, Trophy } from "lucide-react";
+import { ArrowRight, CloudRain, CloudSun, Gauge, Headphones, Moon, Scale, Sun, Target, Trophy } from "lucide-react";
 import { TRACKS, TRACK_TYPE_LABELS, WEATHER_SCENARIOS } from "../data/constants";
-import { formatClock, formatLapTime } from "../utils/helpers";
+import { formatClock } from "../utils/helpers";
 import { classStandings, playerStanding, objectiveFor } from "../engine/career";
 import { isPlayerId, playerEntries } from "../engine/team";
 import { bopWeight, classTeams } from "../engine/weekend";
@@ -31,8 +31,6 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
   const standings = classStandings(game, bopClass);
   const rivals = classTeams(game, bopClass).sort((a, b) => (a.bop || 0) - (b.bop || 0));
   const seasonStarted = (game.archive.currentSeasonRaces || []).length > 0;
-  const records = game.archive?.trackRecords?.[track.id] || {};
-  const setupBonus = game.weekendBonus?.setup;
   const sponsorGoals = player.sponsors.filter(contract => contract.goalPosition && (contract.type === "PERFORMANCE" || (contract.type === "LEMANS" && track.id === "lemans")));
   const WeatherIcon = rain >= 50 ? CloudRain : rain >= 20 ? CloudSun : Sun;
   return (
@@ -80,14 +78,6 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
               ))}
               <div className="col-span-2 text-xs text-gray-400">
                 Destaque: <span className="text-white font-bold">{track.keyFeature}</span>. Curvas-chave: {track.corners.join(", ")}.
-                {["HYPERCAR", "LMGT3"].map(cls =>
-                  records[cls] ? (
-                    <span className="flex items-center gap-1 text-purple-300 mt-1" key={cls}>
-                      <Timer size={12} /> Recorde da pista {cls === "HYPERCAR" ? "HYP" : "GT3"}: <span className="font-mono font-bold">{formatLapTime(records[cls].time)}</span> ·{" "}
-                      {records[cls].teamName} ({records[cls].driver}, {records[cls].season})
-                    </span>
-                  ) : null
-                )}
                 {hasNightRacing(track) && (
                   <span className="flex items-center gap-1 text-indigo-300 font-bold mt-1">
                     <Moon size={12} /> Parte da prova será à noite: ritmo um pouco menor e mais erros.
@@ -148,12 +138,6 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
                     : `Terminar até P${objectiveFor(game, player)?.position} na classe aumenta a confiança da diretoria.`}
                 </span>
               </li>
-              {setupBonus ? (
-                <li className="flex items-start gap-2">
-                  <Gauge size={14} className="text-green-400 mt-0.5 shrink-0" />
-                  <span className="text-green-300 font-bold">Teste privado: setup +{setupBonus}.</span>
-                </li>
-              ) : null}
               {sponsorGoals.map(contract => (
                 <li className="flex items-start gap-2" key={contract.id}>
                   <Target size={14} className="text-red-400 mt-0.5 shrink-0" />

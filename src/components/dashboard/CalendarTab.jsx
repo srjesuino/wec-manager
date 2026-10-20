@@ -63,9 +63,6 @@ const CalendarTab = ({ game }) => {
                       {twoCars ? `#${car.number}` : "Você"}: {car.finished ? `P${car.classPos}` : "DNF"} ({car.points} pts)
                     </span>
                   ))}
-                  {result.driverOfTheDay && (
-                    <span className="text-[11px] text-gray-500">Piloto do dia: {result.driverOfTheDay.driver}</span>
-                  )}
                 </div>
               ) : next ? (
                 <span className="text-blue-300 font-bold animate-pulse">PRÓXIMA ETAPA — destaque: {track.keyFeature}</span>

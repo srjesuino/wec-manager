@@ -10,7 +10,7 @@ import {
   STAFF_ORDER,
   TRACKS
 } from "../data/constants.js";
-import { clamp, randInt, generateDriver, generateRookie, generatePayDriver, generateStaff, upgradeLegacyDriver } from "../utils/helpers.js";
+import { clamp, randInt, generateDriver, generateRookie, generateStaff, upgradeLegacyDriver } from "../utils/helpers.js";
 import { generateSeasonStartNews } from "../utils/mediaEngine.js";
 import { signDriverTo } from "./drivers.js";
 import { driverWageFor, sponsorGoal, econ, secondCarStartBudget } from "./economy.js";
@@ -189,8 +189,7 @@ export const createNewGame = ({
   ];
   const driversPool = [
     ...Array.from({ length: 25 }, () => ({ ...generateDriver(60, 95, null, takenNames), contractYears: 0 })),
-    ...Array.from({ length: 5 }, () => generateRookie(takenNames)),
-    ...Array.from({ length: 4 }, () => generatePayDriver(takenNames))
+    ...Array.from({ length: 5 }, () => generateRookie(takenNames))
   ];
   const game = {
     version: GAME_VERSION,
@@ -203,11 +202,9 @@ export const createNewGame = ({
     raceIndex: 0,
     archive: {
       history: [],
-      currentSeasonRaces: [],
-      trackRecords: {}
+      currentSeasonRaces: []
     },
     newsFeed: [],
-    pendingEvent: null,
     career: {
       difficulty,
       bopEnabled,
@@ -215,8 +212,7 @@ export const createNewGame = ({
       objective: null,
       objective2: null,
       seasonsCompleted: 0,
-      startSeason: season,
-      achievements: {}
+      startSeason: season
     },
     settings: { ...DEFAULT_SETTINGS }
   };
@@ -242,15 +238,14 @@ const upgradeTeamDrivers = (team, takenNames) => {
   return drivers;
 };
 
-// Saves da 4.x: completa os campos novos (segundo carro, conquistas, recordes, eventos)
+// Saves da 4.x: completa os campos novos (segundo carro)
 const normalizeSave = raw => {
   const game = {
     ...raw,
     version: GAME_VERSION,
     sisterTeam: raw.sisterTeam || null,
-    pendingEvent: raw.pendingEvent || null,
-    archive: { history: [], currentSeasonRaces: [], trackRecords: {}, ...raw.archive },
-    career: { achievements: {}, objective2: null, ...raw.career },
+    archive: { history: [], currentSeasonRaces: [], ...raw.archive },
+    career: { objective2: null, ...raw.career },
     settings: { ...DEFAULT_SETTINGS, ...raw.settings }
   };
   if (game.sisterTeam && !game.career.objective2) {
@@ -328,11 +323,9 @@ export const migrateSave = raw => {
     sisterTeam: null,
     archive: {
       history,
-      currentSeasonRaces: archive.currentSeasonRaces || [],
-      trackRecords: {}
+      currentSeasonRaces: archive.currentSeasonRaces || []
     },
     newsFeed: raw.newsFeed || [],
-    pendingEvent: null,
     career: {
       difficulty: "CLASSIC",
       bopEnabled: true,
@@ -340,8 +333,7 @@ export const migrateSave = raw => {
       objective: null,
       objective2: null,
       seasonsCompleted: history.length,
-      startSeason: (raw.season || 2025) - history.length,
-      achievements: {}
+      startSeason: (raw.season || 2025) - history.length
     },
     settings: { ...DEFAULT_SETTINGS }
   };

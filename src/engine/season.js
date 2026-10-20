@@ -1,5 +1,5 @@
 import { SERIES_CONFIG, TEAM_NAMES, DIFFICULTIES, DRIVERS_PER_CAR } from "../data/constants.js";
-import { generateRookie, generatePayDriver } from "../utils/helpers.js";
+import { generateRookie } from "../utils/helpers.js";
 import {
   generateSeasonStartNews,
   generateTransferNews,
@@ -13,7 +13,6 @@ import { developAiTeams } from "./ai.js";
 import { CAR_PARTS, seasonPrize, driverWageFor, secondCarAnnualBudget, secondCarEntryFee } from "./economy.js";
 import { createAiTeam, createSisterTeam, freshPlayerCar, generateStaffMarket } from "./newGame.js";
 import { playerEntries, isPlayerId } from "./team.js";
-import { seasonAchievementIds, unlockAchievements } from "./achievements.js";
 
 // Regras do original: a cada 5 anos regulamento novo (reset), a cada 3 anos corte de 15 pontos
 export const regulationFor = season => {
@@ -305,9 +304,6 @@ export const startNextSeason = (game, decisions = {}) => {
   for (let i = 0; i < 6; i++) {
     pool.push(generateRookie(takenNames));
   }
-  for (let i = 0; i < 2; i++) {
-    pool.push(generatePayDriver(takenNames));
-  }
   aiTeams = aiTeams.map(team => {
     const filled = fillAiVacancies(team, pool, takenNames, transferMoves);
     pool = filled.pool;
@@ -317,14 +313,12 @@ export const startNextSeason = (game, decisions = {}) => {
   pool = pool.sort((a, b) => b.rating - a.rating).slice(0, 45);
 
   const reviewOf = id => review.entries.find(entry => entry.id === id);
-  let career = {
+  const career = {
     ...game.career,
     confidence: promoted ? Math.max(review.confidence, 60) : review.confidence,
     seasonsCompleted: (game.career.seasonsCompleted || 0) + 1,
     promotions: (game.career.promotions || 0) + (promoted ? 1 : 0)
   };
-  const unlocked = unlockAchievements(career, seasonAchievementIds(game, { titles, promoted }), { season: game.season, track: "Temporada" });
-  career = unlocked.career;
 
   const next = {
     ...game,
@@ -335,7 +329,6 @@ export const startNextSeason = (game, decisions = {}) => {
     aiTeams,
     driversPool: pool,
     staffMarket: generateStaffMarket(),
-    pendingEvent: null,
     archive: {
       ...game.archive,
       history: [...game.archive.history, seasonRecord],
@@ -355,5 +348,5 @@ export const startNextSeason = (game, decisions = {}) => {
     ...generateTransferNews(transferMoves),
     ...game.newsFeed
   ].slice(0, 50);
-  return { fired: false, game: next, notes, summary, achievements: unlocked.unlocked };
+  return { fired: false, game: next, notes, summary };
 };

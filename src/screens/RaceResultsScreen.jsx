@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Award, Crown, Flag, Medal, Sparkles, Star, Target, Timer, TriangleAlert, TrendingUp, User } from "lucide-react";
+import { ArrowRight, Crown, Flag, Medal, Star, Target, Timer, TriangleAlert, TrendingUp } from "lucide-react";
 import { TRACKS } from "../data/constants";
 import { formatLapTime, formatMoney, surname } from "../utils/helpers";
 import { TeamStripe } from "../components/ui/common";
@@ -64,10 +64,7 @@ const RaceResultsScreen = ({ game, report, summary, onContinue }) => {
   const [carIdx, setCarIdx] = useState(0);
   const mine = players[carIdx] || report.player;
   const lead = report.player;
-  const records = summary.records || [];
-  const achievements = summary.achievements || [];
   const pointsTotals = summary.pointsTotals || [{ id: lead.teamId, number: lead.number, class: lead.class, points: summary.pointsTotal }];
-  const dotd = report.driverOfTheDay;
   const rows = report.classes[view];
   const isLastRace = game.raceIndex >= TRACKS.length;
   const gainers = Object.values(report.classes)
@@ -115,35 +112,6 @@ const RaceResultsScreen = ({ game, report, summary, onContinue }) => {
             </>
           )}
         </div>
-
-        {(achievements.length > 0 || records.length > 0) && (
-          <div className="bg-gradient-to-r from-yellow-600/20 via-yellow-500/10 to-yellow-600/20 border border-yellow-500/50 rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 gap-3 animate-in zoom-in-95 duration-500">
-            {achievements.map(item => (
-              <div className="flex items-start gap-3" key={item.id || item.title}>
-                <Award size={22} className="text-yellow-400 shrink-0" />
-                <div>
-                  <div className="text-[10px] font-black uppercase text-yellow-300 tracking-widest">Conquista desbloqueada</div>
-                  <div className="font-black text-white">{item.title}</div>
-                  <div className="text-xs text-gray-300">{item.description}</div>
-                </div>
-              </div>
-            ))}
-            {records.map(record => (
-              <div className="flex items-start gap-3" key={record.cls}>
-                <Sparkles size={22} className="text-purple-300 shrink-0" />
-                <div>
-                  <div className="text-[10px] font-black uppercase text-purple-300 tracking-widest">Novo recorde da pista · {classLabel(record.cls)}</div>
-                  <div className={`font-black ${record.isPlayer ? "text-blue-300" : "text-white"}`}>
-                    {record.teamName} — {formatLapTime(record.time)}
-                  </div>
-                  <div className="text-xs text-gray-300">
-                    {surname(record.driver || "")} · recorde anterior {formatLapTime(record.previous)}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Podium title="Pódio Hypercar" results={report.classes.HYPERCAR} accent="text-red-400" />
@@ -280,14 +248,6 @@ const RaceResultsScreen = ({ game, report, summary, onContinue }) => {
             {report.safetyCar && (
               <p className="flex items-start gap-2">
                 <TriangleAlert size={14} className="text-yellow-400 mt-0.5 shrink-0" /> Houve Safety Car na prova.
-              </p>
-            )}
-            {dotd && (
-              <p className="flex items-start gap-2">
-                <User size={14} className="text-blue-400 mt-0.5 shrink-0" />
-                <span>
-                  Piloto do dia: <span className={`font-bold ${dotd.isPlayer ? "text-blue-300" : ""}`}>{dotd.driver}</span> ({dotd.teamName}, {dotd.reason})
-                </span>
               </p>
             )}
             {dnfs.length > 0 && (

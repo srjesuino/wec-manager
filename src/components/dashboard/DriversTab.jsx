@@ -3,7 +3,6 @@ import { ArrowLeftRight, ArrowUp, Frown, Handshake, Lock, Meh, Smile, UserPlus, 
 import { TRACKS } from "../../data/constants";
 import { ATTRIBUTE_LABELS, formatMoney } from "../../utils/helpers";
 import { signingFee, driverWageFor, releaseCost, requiredReputation } from "../../engine/economy";
-import { backingFor } from "../../engine/drivers";
 import { playerEntries } from "../../engine/team";
 import { CategoryBadge, ClassBadge, Flag, MeterBar } from "../ui/common";
 
@@ -87,7 +86,6 @@ const DriverCard = ({ driver, index, team, onSetStarter, otherTeam, onSwap }) =>
           <span className="font-bold text-red-300 font-mono">{formatMoney(driver.wage || driverWageFor(driver, team.class))}</span>
         </div>
       </div>
-      {driver.backing > 0 && <div className="mt-2 text-[11px] font-bold text-green-300">Patrocínio pessoal +{formatMoney(driver.backing)}/corrida</div>}
       {otherTeam && (
         <div className="mt-3 flex items-center gap-2">
           <ArrowLeftRight size={12} className="text-gray-500 shrink-0" />
@@ -131,10 +129,7 @@ const SignModal = ({ driver, entries, funds, racesLeft, onConfirm, onClose }) =>
               <Flag driver={driver} /> {driver.name} <span className="text-gray-500">({driver.rating})</span>
             </h3>
             <p className="text-xs text-gray-400">
-              {driver.backingBase
-                ? `Piloto pagante: sem luvas, traz ${formatMoney(backingFor(driver, main.class))}/corrida`
-                : `Luvas ${formatMoney(fee)} · salário ${formatMoney(wage)}/corrida`}{" "}
-              · contrato de 2 temporadas
+              Luvas {formatMoney(fee)} · salário {formatMoney(wage)}/corrida · contrato de 2 temporadas
             </p>
             {twoCars && <p className="text-[10px] text-gray-500 mt-1">Luvas e salário seguem a classe do carro em que ele vai correr.</p>}
           </div>
@@ -275,7 +270,6 @@ const DriversTab = ({ game, onSignDriver, onSetStarter, onSwapDrivers }) => {
             <tbody className="divide-y divide-gray-800 text-sm">
               {market.map(driver => {
                 const fee = signingFee(driver, player.class);
-                const backing = driver.backingBase ? backingFor(driver, player.class) : 0;
                 const repNeeded = requiredReputation(driver);
                 const locked = (player.reputation ?? 0) < repNeeded;
                 return (
@@ -283,11 +277,9 @@ const DriversTab = ({ game, onSignDriver, onSetStarter, onSwapDrivers }) => {
                     <td className="p-3">
                       <div className="font-bold text-gray-200 flex items-center gap-1.5">
                         <Flag driver={driver} /> {driver.name}
-                        {backing > 0 && <span className="text-[9px] font-black bg-green-700 text-green-100 px-1.5 py-0.5 rounded uppercase">Pagante</span>}
                       </div>
                       <div className="text-[10px] text-gray-500 flex items-center gap-2 mt-0.5">
-                        <CategoryBadge rating={driver.rating} /> {driver.age} anos ·{" "}
-                        {backing > 0 ? <span className="text-green-300 font-bold">Traz {formatMoney(backing)}/corrida</span> : `${formatMoney(driverWageFor(driver, player.class))}/corrida`}
+                        <CategoryBadge rating={driver.rating} /> {driver.age} anos · {formatMoney(driverWageFor(driver, player.class))}/corrida
                       </div>
                     </td>
                     <td className="p-3 text-center">

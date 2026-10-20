@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BookOpen, Car, Factory, Flag, Fuel, Sparkles, Trophy, Users, X } from "lucide-react";
+import { BookOpen, Car, Factory, Flag, Fuel, Trophy, Users, X } from "lucide-react";
 
 const SECTIONS = [
   {
@@ -73,18 +73,6 @@ const SECTIONS = [
       "Na corrida, alterne entre os carros para comandar pits e modos. Com os dois na mesma classe, use as ordens de equipe: Manter posições (sem disputa interna) ou trocar as posições quando estiverem juntos.",
       "A diretoria define uma meta para cada carro. O carro principal conta inteiro na confiança e no orçamento; o segundo carro pesa 60%.",
       "No fim da temporada você pode inscrever um segundo carro (pagando a inscrição) ou retirar o que já tem."
-    ]
-  },
-  {
-    id: "paddock",
-    title: "Paddock & Conquistas",
-    icon: Sparkles,
-    items: [
-      "Eventos do paddock: entre as corridas surgem dilemas (peças experimentais, teste privado, pedidos de aumento, FIA, imprensa...). Decida na Visão Geral; se você for para a pista sem decidir, o evento é ignorado.",
-      "Pilotos pagantes: alguns pilotos do mercado não cobram luvas e trazem patrocínio pessoal a cada corrida. São mais lentos, mas aliviam o caixa.",
-      "Conquistas: marcos da carreira (primeira vitória, Le Mans, dobradinha, Grand Slam, títulos...) ficam registrados para sempre.",
-      "Recordes: cada pista guarda a volta mais rápida de cada classe. Bater o recorde rende destaque e conquista.",
-      "Piloto do dia: depois de cada corrida o público elege quem mais brilhou na pista."
     ]
   },
   {

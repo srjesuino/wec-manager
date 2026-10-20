@@ -7,7 +7,6 @@ import { simulateToEnd } from "../src/engine/race.js";
 import { buildRaceReport, applyRaceResults, racePoints } from "../src/engine/results.js";
 import { classTeams } from "../src/engine/weekend.js";
 import { swapTeamCars, setTeamOrders, canSwapTeamCars } from "../src/engine/race.js";
-import { rollPaddockEvent, resolvePaddockEvent } from "../src/engine/events.js";
 import { upgradeCostFor } from "../src/engine/team.js";
 import { upgradeCost } from "../src/engine/economy.js";
 
@@ -202,28 +201,13 @@ const playSeason = game => {
   check("título somado na organização", promoted.playerTeam.championships === 1);
 }
 
-// 8) Eventos do paddock: toda escolha resolve sem quebrar o jogo
-{
-  const game = createNewGame({ teamName: "Events", series: "HYPERCAR", program: "SAME_CLASS" });
-  let ok = true;
-  for (let i = 0; i < 60; i++) {
-    const event = rollPaddockEvent(game, 1);
-    for (const choice of event.choices) {
-      const result = resolvePaddockEvent({ ...game, pendingEvent: event }, choice.id);
-      if (result.game.pendingEvent || !Number.isFinite(result.game.playerTeam.funds)) ok = false;
-    }
-  }
-  check("eventos do paddock resolvem todas as escolhas", ok);
-}
-
-// 9) Save da 4.0 (sem segundo carro) abre na 4.1
+// 8) Save da 4.0 (sem segundo carro) abre na 4.1
 {
   const old = { ...createNewGame({ teamName: "Old", series: "HYPERCAR" }), version: "4.0" };
   delete old.sisterTeam;
-  delete old.career.achievements;
-  delete old.archive.trackRecords;
+  delete old.career.objective2;
   const game = migrateSave(old);
-  check("save 4.0 migra sem segundo carro", game.version === "4.1" && game.sisterTeam === null && !!game.career.achievements && !!game.archive.trackRecords);
+  check("save 4.0 migra sem segundo carro", game.version === "4.1" && game.sisterTeam === null && game.career.objective2 === null);
   check("save 4.0 joga corridas", playSeason(game).raceIndex === TRACKS.length);
 }
 

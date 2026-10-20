@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, CirclePlay, Megaphone, Moon, Newspaper, Scale, Star, Swords, Target, Trophy, Users, Wallet, Wrench } from "lucide-react";
+import { ChevronRight, CirclePlay, Moon, Newspaper, Scale, Star, Target, Trophy, Users, Wallet, Wrench } from "lucide-react";
 import { TRACKS, TRACK_TYPE_LABELS, PART_INFO, DIFFICULTIES } from "../../data/constants";
 import { formatMoney, surname } from "../../utils/helpers";
 import { classStandings, playerStanding, objectiveFor } from "../../engine/career";
@@ -45,35 +45,7 @@ const CarSwitch = ({ entries, value, onChange }) =>
     </div>
   ) : null;
 
-// Evento do paddock pendente, com as escolhas
-const PaddockEventCard = ({ event, funds, onResolve }) => (
-  <div className="xl:col-span-3 bg-gradient-to-r from-amber-900/30 via-gray-900 to-gray-900 border-2 border-amber-600/60 rounded-xl p-4 md:p-5 shadow-lg animate-in fade-in slide-in-from-top-2 duration-500">
-    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-amber-400 mb-1">
-      <Megaphone size={14} /> Paddock · decisão pendente
-    </div>
-    <h3 className="text-xl md:text-2xl font-black italic text-white">{event.title}</h3>
-    <p className="text-sm text-gray-300 mt-1 max-w-3xl">{event.body}</p>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-4">
-      {event.choices.map(choice => {
-        const blocked = choice.cost != null && choice.cost > funds;
-        return (
-          <button
-            key={choice.id}
-            disabled={blocked}
-            onClick={() => onResolve(choice.id)}
-            className="text-left p-3 rounded-lg border border-gray-700 bg-gray-950 hover:border-amber-500 hover:bg-amber-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
-          >
-            <div className="font-bold text-white text-sm">{choice.label}</div>
-            <div className="text-[11px] text-gray-400 mt-0.5">{blocked ? "Fundos insuficientes" : choice.detail}</div>
-          </button>
-        );
-      })}
-    </div>
-    <p className="text-[10px] text-gray-500 mt-2">Se você for para a pista sem decidir, o evento é ignorado.</p>
-  </div>
-);
-
-const OverviewTab = ({ game, onStartWeekend, setActiveTab, onResolveEvent }) => {
+const OverviewTab = ({ game, onStartWeekend, setActiveTab }) => {
   const player = game.playerTeam;
   const sister = game.sisterTeam;
   const entries = playerEntries(game);
@@ -98,14 +70,11 @@ const OverviewTab = ({ game, onStartWeekend, setActiveTab, onResolveEvent }) => 
   const standingsInfo = entries.map(entry => {
     const standings = classStandings(game, entry.class);
     const position = playerStanding(game, entry);
-    const leader = standings[0];
-    const rival = position > 1 ? standings[position - 2] : standings[1];
-    return { entry, standings, position, leader, rival, objective: objectiveFor(game, entry) };
+    return { entry, standings, position, leader: standings[0], objective: objectiveFor(game, entry) };
   });
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-      {game.pendingEvent && <PaddockEventCard event={game.pendingEvent} funds={player.funds} onResolve={onResolveEvent} />}
       {track && (
         <div className="xl:col-span-2 bg-gradient-to-br from-gray-900 to-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-2xl relative">
           <div className="absolute inset-y-0 right-0 w-full md:w-1/2 opacity-30 md:opacity-60 pointer-events-none">
@@ -166,7 +135,7 @@ const OverviewTab = ({ game, onStartWeekend, setActiveTab, onResolveEvent }) => 
 
       <Card title="Campeonato" icon={Trophy} iconClass="text-yellow-500" action={<LinkButton onClick={() => setActiveTab("standings")} label="Tabela" />}>
         <div className="space-y-4">
-          {standingsInfo.map(({ entry, standings, position, leader, rival }) => (
+          {standingsInfo.map(({ entry, standings, position, leader }) => (
             <div className={twoCars ? "bg-gray-950/60 border border-gray-800 rounded-lg p-3" : ""} key={entry.id}>
               <div className="flex items-end justify-between mb-3">
                 <div>
@@ -194,19 +163,6 @@ const OverviewTab = ({ game, onStartWeekend, setActiveTab, onResolveEvent }) => 
                   </div>
                 ))}
               </div>
-              {seasonStarted && rival && (
-                <div className="flex items-center justify-between text-xs bg-gray-950 border border-gray-800 rounded-lg px-2 py-1.5 mb-2">
-                  <span className="flex items-center gap-2 min-w-0">
-                    <Swords size={12} className="text-red-400 shrink-0" />
-                    <span className="text-gray-500 uppercase font-bold text-[10px] shrink-0">Rival direto</span>
-                    <TeamStripe color={rival.color} />
-                    <span className="font-bold text-gray-200 truncate">{rival.name}</span>
-                  </span>
-                  <span className={`font-mono font-bold shrink-0 ${rival.points > entry.points ? "text-red-300" : "text-green-300"}`}>
-                    {rival.points > entry.points ? `-${rival.points - entry.points}` : `+${entry.points - rival.points}`} pts
-                  </span>
-                </div>
-              )}
               {!twoCars && (
                 <div className="space-y-1">
                   {standings.slice(0, 5).map((team, index) => (

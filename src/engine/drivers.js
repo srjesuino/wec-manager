@@ -50,12 +50,8 @@ export const signDriverTo = (driver, team, years = 2) => ({
   ...driver,
   teamId: team.id,
   wage: driverWageFor(driver, team.class),
-  ...(driver.backingBase ? { backing: backingFor(driver, team.class) } : {}),
   contractYears: years
 });
-
-// Dinheiro que o piloto pagante traz por corrida, na escala da classe
-export const backingFor = (driver, cls) => Math.floor((driver.backingBase || 0) * econ(cls));
 
 // Preenche vagas de uma equipe da IA com o melhor piloto que ela consegue pagar
 export const fillAiVacancies = (team, pool, takenNames, news) => {

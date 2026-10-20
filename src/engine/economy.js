@@ -73,11 +73,8 @@ export const staffPayroll = team => {
 // ---------------------------------------------------------------------------
 
 export const driverWageFor = (driver, cls) => Math.floor(calculateWage(driver.rating) * econ(cls));
-export const signingFee = (driver, cls) => (driver.backing ? 0 : Math.floor(driver.marketValue * econ(cls)));
-// Pilotos pagantes (backing) trazem dinheiro de patrocinadores pessoais a cada corrida
-export const driverCost = driver => (driver.wage || 0) - (driver.backing || 0);
-export const driversPayroll = team => team.drivers.reduce((sum, driver) => sum + driverCost(driver), 0);
-export const driversBacking = team => team.drivers.reduce((sum, driver) => sum + (driver.backing || 0), 0);
+export const signingFee = (driver, cls) => Math.floor(driver.marketValue * econ(cls));
+export const driversPayroll = team => team.drivers.reduce((sum, driver) => sum + (driver.wage || 0), 0);
 
 // Multa para dispensar um piloto: metade do salário restante da temporada
 export const releaseCost = (driver, racesLeft) => Math.floor((driver.wage || 0) * Math.max(1, racesLeft) * 0.5);
