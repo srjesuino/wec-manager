@@ -1,5 +1,5 @@
-import { SERIES_CONFIG, FACILITY_ORDER, STAFF_ORDER, SECOND_CAR } from "../data/constants.js";
-import { calculateWage } from "../utils/helpers.js";
+import { SERIES_CONFIG, FACILITY_ORDER, STAFF_ORDER, SECOND_CAR, HOMOLOGATION, TOKEN_FREE_PARTS } from "../data/constants.js";
+import { calculateWage, clamp } from "../utils/helpers.js";
 
 export const CAR_PARTS = ["engine", "aero", "chassis", "reliability", "efficiency", "crew"];
 export const MAIN_PARTS = ["engine", "aero", "chassis"];
@@ -36,6 +36,24 @@ export const upgradeCost = (team, part) => {
   const cost = cfg.partsCostBase * Math.pow(cfg.upgradeGrowth, level) * nearCap * (1 - facilityDiscount(team, part));
   return Math.floor(cost);
 };
+
+// ---------------------------------------------------------------------------
+// Homologação (fichas de evolução por temporada)
+// ---------------------------------------------------------------------------
+
+export const usesToken = part => !TOKEN_FREE_PARTS.includes(part);
+
+const mainAverage = car => MAIN_PARTS.reduce((sum, part) => sum + (car[part] ?? 0), 0) / MAIN_PARTS.length;
+
+export const homologationTokens = (team, classCars, newRegulation = false) => {
+  const best = Math.max(...classCars.map(item => mainAverage(item.car)));
+  const extra = clamp(Math.floor((best - mainAverage(team.car)) / HOMOLOGATION.catchUpEvery), 0, HOMOLOGATION.catchUpMax);
+  return (newRegulation ? HOMOLOGATION.newRegulation : HOMOLOGATION.base) + extra;
+};
+
+// Distribui as fichas da temporada para todos os carros (cada um comparado ao melhor da sua classe)
+export const assignHomologation = (teams, newRegulation = false) =>
+  teams.map(team => ({ ...team, devTokens: homologationTokens(team, teams.filter(item => item.class === team.class), newRegulation) }));
 
 // Chance de o upgrade render +3 (Diretor Técnico)
 export const bonusUpgradeChance = team => {

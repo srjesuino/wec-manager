@@ -560,7 +560,10 @@ export const DIFFICULTIES = {
     startReliability: 78,
     budgetMult: 1.3,
     canBeFired: false,
-    confidenceMult: 0.6
+    confidenceMult: 0.6,
+    aiBudget: 0.85,
+    aiSetup: -0.1,
+    rivalReaction: 0.5
   },
   NORMAL: {
     id: "NORMAL",
@@ -570,7 +573,10 @@ export const DIFFICULTIES = {
     startReliability: 70,
     budgetMult: 1,
     canBeFired: true,
-    confidenceMult: 1
+    confidenceMult: 1,
+    aiBudget: 1,
+    aiSetup: 0,
+    rivalReaction: 1
   },
   CLASSIC: {
     id: "CLASSIC",
@@ -580,30 +586,53 @@ export const DIFFICULTIES = {
     startReliability: 60,
     budgetMult: 1,
     canBeFired: true,
-    confidenceMult: 1.3
+    confidenceMult: 1.3,
+    aiBudget: 1.1,
+    aiSetup: 0.05,
+    rivalReaction: 1.3
   }
 };
+// aiBudget: multiplica a verba das equipes da IA; aiSetup: qualidade do acerto da IA nos fins de semana;
+// rivalReaction: força da reação das fábricas quando vão mal (ou quando o jogador vence)
 
-// Equipes da IA: o índice na lista define o nível (3 de ponta, 3 de fábrica, o resto privadas)
+// Equipes da IA: o índice na lista define o ponto de partida (3 de ponta, 3 de fábrica, o resto privadas).
+// investment/engineering são as médias do "programa" de cada nível; cada equipe sorteia os seus valores
+// e eles mudam a cada temporada (verba da matriz, gente que chega e sai).
 export const AI_TIERS = [{
   id: 0,
   label: "Equipe de fábrica de ponta",
   fundsMult: 1.4,
   support: 2000000,
-  annual: 30000000
+  annual: 30000000,
+  investment: 1.05,
+  engineering: 1.1
 }, {
   id: 1,
   label: "Equipe de fábrica",
   fundsMult: 1.4,
   support: 1500000,
-  annual: 24000000
+  annual: 24000000,
+  investment: 0.95,
+  engineering: 1.02
 }, {
   id: 2,
   label: "Equipe privada",
   fundsMult: 1.2,
   support: 1100000,
-  annual: 19000000
+  annual: 19000000,
+  investment: 0.85,
+  engineering: 0.94
 }];
+
+// Ciclo do regulamento técnico: a cada N temporadas, carros novos para todos (o primeiro chega em REGULATION_START)
+export const REGULATION_CYCLE = 5;
+export const REGULATION_START = 2028;
+
+// Homologação: quantas evoluções cada carro pode trazer por temporada (fichas), como os "jokers" do WEC.
+// Quem está muito atrás do melhor carro da classe ganha fichas extras (1 a cada 4 pontos, até +8).
+// A equipe de pit não é peça homologada e não usa ficha.
+export const HOMOLOGATION = { base: 10, newRegulation: 16, catchUpEvery: 4, catchUpMax: 8 };
+export const TOKEN_FREE_PARTS = ["crew"];
 
 // Número e cor de cada equipe da IA
 export const TEAM_DETAILS = {

@@ -1,7 +1,10 @@
 // Testes de cenário do motor: promoção, demissão, migração de save antigo e consistência de pontos
 import { TRACKS } from "../src/data/constants.js";
 import { createNewGame, migrateSave } from "../src/engine/newGame.js";
-import { buildSeasonSummary, startNextSeason } from "../src/engine/season.js";
+import { buildSeasonSummary, startNextSeason, regulationFor } from "../src/engine/season.js";
+import { developAiTeam, evolveAiPrograms, INVESTMENT_RANGE, ENGINEERING_RANGE } from "../src/engine/ai.js";
+import { HOMOLOGATION } from "../src/data/constants.js";
+import { createObjective } from "../src/engine/career.js";
 import { applyBop, createWeekend, computeQualifying, createRaceState } from "../src/engine/weekend.js";
 import { simulateToEnd } from "../src/engine/race.js";
 import { buildRaceReport, applyRaceResults, racePoints } from "../src/engine/results.js";
@@ -209,6 +212,35 @@ const playSeason = game => {
   const game = migrateSave(old);
   check("save 4.0 migra sem segundo carro", game.version === "4.1" && game.sisterTeam === null && game.career.objective2 === null);
   check("save 4.0 joga corridas", playSeason(game).raceIndex === TRACKS.length);
+}
+
+// 9) Motor de equilíbrio: programas da IA, homologação e ciclos de regulamento
+{
+  const game = createNewGame({ teamName: "Bal", series: "HYPERCAR" });
+  check("toda equipe da IA tem programa", game.aiTeams.every(t => t.program && t.program.investment > 0 && t.program.engineering > 0));
+  const investments = new Set(game.aiTeams.map(t => t.program.investment));
+  check("programas variam entre as equipes", investments.size > 5);
+  check("todos recebem fichas de homologação", [game.playerTeam, ...game.aiTeams].every(t => t.devTokens >= HOMOLOGATION.base));
+  check("jogador atrás ganha fichas de recuperação", game.playerTeam.devTokens > HOMOLOGATION.base, `${game.playerTeam.devTokens}`);
+  const broke = developAiTeam({ ...game.aiTeams[0], funds: 1e9, devTokens: 0 }, 1);
+  const before = game.aiTeams[0].car;
+  check("IA sem fichas não evolui peças homologadas", ["engine", "aero", "chassis", "reliability", "efficiency"].every(p => broke.car[p] <= before[p]));
+  const rich = developAiTeam({ ...game.aiTeams[9], funds: 1e9, devTokens: 3 }, 1);
+  check("IA gasta no máximo as fichas que tem", rich.devTokens >= 0 && rich.devTokens <= 3);
+  check("regulamento novo em 2028 e a cada 5 anos", regulationFor(2028).type === "RESET" && regulationFor(2033).type === "RESET" && regulationFor(2030).type === "STABLE");
+  const standings = cls => classTeams(game, cls).sort((a, b) => a.car.engine - b.car.engine);
+  const evolved = evolveAiPrograms(game.aiTeams, standings, { difficulty: "NORMAL", isPlayer: id => id.startsWith("player") }).aiTeams;
+  check(
+    "programas ficam dentro dos limites",
+    evolved.every(t => t.program.investment >= INVESTMENT_RANGE[0] && t.program.investment <= INVESTMENT_RANGE[1] && t.program.engineering >= ENGINEERING_RANGE[0] && t.program.engineering <= ENGINEERING_RANGE[1])
+  );
+  // Virada para 2028: carros novos, mais fichas e meta da diretoria pelo carro novo
+  let g = { ...playSeason({ ...game, season: 2027 }) };
+  g = { ...g, playerTeam: { ...g.playerTeam, points: 999 } };
+  const next = startNextSeason(g, {}).game;
+  check("regulamento novo zera os carros", [next.playerTeam, ...next.aiTeams].every(t => t.car.engine <= 75), `${Math.max(...next.aiTeams.map(t => t.car.engine))}`);
+  check("ano de regulamento novo dá mais fichas", next.aiTeams.every(t => t.devTokens >= HOMOLOGATION.newRegulation - 8));
+  check("no regulamento novo a meta segue o carro novo (não o título anterior)", next.career.objective.position === createObjective(next).position, `Top ${next.career.objective.position}`);
 }
 
 console.log(failures ? `\n${failures} falha(s)` : "\nTodos os cenários passaram.");

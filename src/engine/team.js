@@ -1,5 +1,5 @@
 import { SHARED_DEV_MULT } from "../data/constants.js";
-import { upgradeCost } from "./economy.js";
+import { upgradeCost, usesToken } from "./economy.js";
 
 // ---------------------------------------------------------------------------
 // Equipe do jogador com um ou dois carros
@@ -36,6 +36,11 @@ export const withTeamFacilities = (game, entry) => ({ ...entry, facilities: game
 // Custo de um upgrade para um dos carros do jogador (peças para os dois quando o P&D é compartilhado)
 export const upgradeCostFor = (game, entry, part) =>
   Math.floor(upgradeCost(withTeamFacilities(game, entry), part) * (sharedDevelopment(game) ? SHARED_DEV_MULT : 1));
+
+// Fichas de homologação: com P&D compartilhado o projeto (e as fichas) é um só, guardado no carro principal
+export const tokenOwner = (game, entry) => (sharedDevelopment(game) ? game.playerTeam : entry);
+export const tokensLeft = (game, entry) => tokenOwner(game, entry).devTokens ?? 0;
+export const canUseToken = (game, entry, part) => !usesToken(part) || tokensLeft(game, entry) > 0;
 
 // Atualiza um dos carros do jogador (e o outro também quando o projeto é compartilhado)
 export const mapEntries = (game, fn) => ({

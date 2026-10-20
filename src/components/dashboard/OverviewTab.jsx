@@ -5,7 +5,7 @@ import { formatMoney, surname } from "../../utils/helpers";
 import { classStandings, playerStanding, objectiveFor } from "../../engine/career";
 import { computeBop, allTeams, bopWeight } from "../../engine/weekend";
 import { driversPayroll, staffPayroll, facilityUpkeep, secondCarOperations, CAR_PARTS } from "../../engine/economy";
-import { playerEntries, isPlayerId, sharedDevelopment } from "../../engine/team";
+import { playerEntries, isPlayerId, sharedDevelopment, tokensLeft } from "../../engine/team";
 import { ClassBadge, MeterBar, confidenceColor, Flag, CategoryBadge, TeamStripe, CountryCode } from "../ui/common";
 import { TrackOutline } from "../TrackMap";
 
@@ -281,6 +281,9 @@ const OverviewTab = ({ game, onStartWeekend, setActiveTab }) => {
             </div>
           ))}
         </div>
+        <p className="text-[10px] text-gray-500 mt-3">
+          Fichas de homologação restantes: <span className={tokensLeft(game, selected) > 0 ? "text-blue-300 font-bold" : "text-red-300 font-bold"}>{tokensLeft(game, selected)}</span>
+        </p>
       </Card>
 
       <Card

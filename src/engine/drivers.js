@@ -53,6 +53,36 @@ export const signDriverTo = (driver, team, years = 2) => ({
   contractYears: years
 });
 
+// Fábricas ricas trocam o pior piloto por uma estrela do mercado (as de maior verba escolhem primeiro)
+export const recruitStars = (aiTeams, pool, news) => {
+  let available = [...pool];
+  const byPower = [...aiTeams].sort((a, b) => (b.program?.investment ?? 1) - (a.program?.investment ?? 1));
+  const updated = new Map();
+  byPower.forEach(team => {
+    if ((team.program?.investment ?? 1) < 1 && (team.tier ?? 2) > 0) {
+      return;
+    }
+    const reserve = AI_TIERS[team.tier ?? 2].annual * econ(team.class) * 0.2;
+    const worst = [...team.drivers].sort((a, b) => a.rating - b.rating)[0];
+    const star = available
+      .filter(driver => driver.rating >= worst.rating + 4 && signingFee(driver, team.class) <= team.funds - reserve)
+      .sort((a, b) => b.rating - a.rating)[0];
+    if (!star) {
+      return;
+    }
+    available = available.filter(driver => driver.id !== star.id);
+    const next = { ...team, funds: team.funds - signingFee(star, team.class) };
+    const signed = signDriverTo(star, next, randInt(2, 3));
+    next.drivers = [...team.drivers.filter(driver => driver.id !== worst.id), signed];
+    available.push({ ...worst, teamId: null, contractYears: 0 });
+    updated.set(team.id, next);
+    if (news && star.rating >= 80) {
+      news.push({ driver: signed, team: next });
+    }
+  });
+  return { aiTeams: aiTeams.map(team => updated.get(team.id) || team), pool: available };
+};
+
 // Preenche vagas de uma equipe da IA com o melhor piloto que ela consegue pagar
 export const fillAiVacancies = (team, pool, takenNames, news) => {
   let next = { ...team, drivers: [...team.drivers] };

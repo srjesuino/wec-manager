@@ -2,6 +2,7 @@ import { SERIES_CONFIG, TRACKS, WEATHER_SCENARIOS } from "../data/constants.js";
 import { clamp, randRange, pickRandom, pickWeighted } from "../utils/helpers.js";
 import { basePace, carPerformance, driverPaceRating } from "./race.js";
 import { isPlayerId, playerEntries } from "./team.js";
+import { aiSetupBonus, aiQualyBonus } from "./ai.js";
 
 export const allTeams = game => [...playerEntries(game), ...game.aiTeams];
 export const classTeams = (game, cls) => allTeams(game).filter(team => team.class === cls);
@@ -60,9 +61,10 @@ export const createWeekend = game => {
   const base = WEATHER_SCENARIOS[scenario].rain;
   const noise = (5 - engineer) * 0.12;
   const forecastRain = clamp(base + randRange(-noise, noise) * Math.max(base, 0.1), 0, 1);
+  // Acerto da IA: depende da engenharia de cada equipe (e da dificuldade)
   const aiSetup = {};
   game.aiTeams.forEach(team => {
-    aiSetup[team.id] = randRange(0.4, 1.5);
+    aiSetup[team.id] = aiSetupBonus(team, game.career?.difficulty);
   });
   return {
     trackIndex: game.raceIndex,
@@ -104,8 +106,9 @@ export const computeQualifying = (game, weekend) => {
       const cfg = SERIES_CONFIG[team.class];
       const isPlayer = isPlayerId(team.id);
       const bestIdx = team.drivers.reduce((best, driver, idx) => (driverPaceRating(driver, wet) > driverPaceRating(team.drivers[best], wet) ? idx : best), 0);
-      const setupBonus = isPlayer ? (entrySetupScore(weekend, team.id) / 100) * 2 : weekend.aiSetup[team.id] ?? 0.9;
-      const qualyBonus = isPlayer ? (entryQualyScore(weekend, team.id) / 100) * 1.2 : Math.random() * 0.9;
+      // Setup perfeito = 1,3 (a IA de ponta fica perto de 1,0): vale ritmo, mas não compensa um carro muito pior
+      const setupBonus = isPlayer ? 0.3 + entrySetupScore(weekend, team.id) / 100 : weekend.aiSetup[team.id] ?? 0.9;
+      const qualyBonus = isPlayer ? 0.2 + (entryQualyScore(weekend, team.id) / 100) * 0.8 : aiQualyBonus(team);
       const speed =
         cfg.baseSpeed +
         carPerformance(team.car, track.type) * 0.05 +

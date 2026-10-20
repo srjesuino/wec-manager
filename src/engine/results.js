@@ -11,7 +11,7 @@ import {
   facilityUpkeep,
   secondCarOperations
 } from "./economy.js";
-import { developAiTeams } from "./ai.js";
+import { developAiTeams, aiRaceSupport } from "./ai.js";
 import { reputationDelta, confidenceRaceDelta } from "./career.js";
 import { isPlayerId } from "./team.js";
 
@@ -179,10 +179,10 @@ export const applyRaceResults = (game, report) => {
       return team;
     }
     const next = applyResultToTeam(team, result, classSize(team.class));
-    next.funds += racePrize(next.class, result.classPos, result.finished, multiplier) + (next.support || 0) - driversPayroll(next);
+    next.funds += racePrize(next.class, result.classPos, result.finished, multiplier) + aiRaceSupport(next, game.career.difficulty) - driversPayroll(next);
     return next;
   });
-  aiTeams = developAiTeams(aiTeams, 2);
+  aiTeams = developAiTeams(aiTeams, 0.3);
 
   const playerResult = results.get(game.playerTeam.id);
   const player = applyResultToTeam(game.playerTeam, playerResult, classSize(game.playerTeam.class));

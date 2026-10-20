@@ -13,9 +13,10 @@ import {
 import { clamp, randInt, generateDriver, generateRookie, generateStaff, upgradeLegacyDriver } from "../utils/helpers.js";
 import { generateSeasonStartNews } from "../utils/mediaEngine.js";
 import { signDriverTo } from "./drivers.js";
-import { driverWageFor, sponsorGoal, econ, secondCarStartBudget } from "./economy.js";
+import { driverWageFor, sponsorGoal, econ, secondCarStartBudget, assignHomologation } from "./economy.js";
 import { createObjective } from "./career.js";
 import { SISTER_ID } from "./team.js";
+import { createAiProgram } from "./ai.js";
 
 export const DEFAULT_SETTINGS = {
   raceSpeed: 1,
@@ -44,7 +45,9 @@ export const createAiTeam = (cls, name, index, takenNames, id = `${cls.toLowerCa
   const cfg = SERIES_CONFIG[cls];
   const tier = aiTier(index);
   const tierData = AI_TIERS[tier];
-  const level = cfg.aiLevels[tier];
+  const program = createAiProgram(tier);
+  // Engenharia acima da média do nível = carro um pouco melhor desde o início
+  const level = cfg.aiLevels[tier] + Math.round((program.engineering - tierData.engineering) * 30);
   const offset = () => Math.floor(Math.random() * 6) - 3;
   const part = () => clamp(level + offset(), 30, 99);
   const team = {
@@ -55,6 +58,7 @@ export const createAiTeam = (cls, name, index, takenNames, id = `${cls.toLowerCa
     color: TEAM_DETAILS[name]?.color ?? "#9ca3af",
     number: TEAM_DETAILS[name]?.number ?? String(40 + index),
     tier,
+    program,
     funds: cfg.budget * tierData.fundsMult,
     points: 0,
     stats: { wins: 0, podiums: 0, poles: 0 },
@@ -117,6 +121,18 @@ const createPlayerTeam = ({ teamName, series, color, number, difficulty }, taken
   };
   team.drivers = Array.from({ length: DRIVERS_PER_CAR }, () => signDriverTo(generateDriver(65, 75, null, takenNames), team, randInt(1, 3)));
   return team;
+};
+
+// Fichas de homologação da temporada para todos os carros do grid
+export const withHomologation = (game, newRegulation = false) => {
+  const teams = assignHomologation([game.playerTeam, ...(game.sisterTeam ? [game.sisterTeam] : []), ...game.aiTeams], newRegulation);
+  const byId = new Map(teams.map(team => [team.id, team]));
+  return {
+    ...game,
+    playerTeam: byId.get(game.playerTeam.id),
+    sisterTeam: game.sisterTeam ? byId.get(game.sisterTeam.id) : null,
+    aiTeams: game.aiTeams.map(team => byId.get(team.id))
+  };
 };
 
 // Nome padrão do segundo carro
@@ -191,7 +207,7 @@ export const createNewGame = ({
     ...Array.from({ length: 25 }, () => ({ ...generateDriver(60, 95, null, takenNames), contractYears: 0 })),
     ...Array.from({ length: 5 }, () => generateRookie(takenNames))
   ];
-  const game = {
+  let game = {
     version: GAME_VERSION,
     season,
     playerTeam,
@@ -216,6 +232,7 @@ export const createNewGame = ({
     },
     settings: { ...DEFAULT_SETTINGS }
   };
+  game = withHomologation(game);
   game.career.objective = createObjective(game);
   game.career.objective2 = sisterTeam ? createObjective(game, null, sisterTeam) : null;
   game.newsFeed = generateSeasonStartNews(season, playerTeam, game.career.objective, sisterTeam);
@@ -240,14 +257,18 @@ const upgradeTeamDrivers = (team, takenNames) => {
 
 // Saves da 4.x: completa os campos novos (segundo carro)
 const normalizeSave = raw => {
-  const game = {
+  let game = {
     ...raw,
     version: GAME_VERSION,
     sisterTeam: raw.sisterTeam || null,
     archive: { history: [], currentSeasonRaces: [], ...raw.archive },
     career: { objective2: null, ...raw.career },
-    settings: { ...DEFAULT_SETTINGS, ...raw.settings }
+    settings: { ...DEFAULT_SETTINGS, ...raw.settings },
+    aiTeams: (raw.aiTeams || []).map(team => (team.program ? team : { ...team, program: createAiProgram(team.tier ?? 2) }))
   };
+  if (game.playerTeam.devTokens == null) {
+    game = withHomologation(game);
+  }
   if (game.sisterTeam && !game.career.objective2) {
     game.career.objective2 = createObjective(game, null, game.sisterTeam);
   }
@@ -294,6 +315,7 @@ export const migrateSave = raw => {
       color: team.color || TEAM_DETAILS[team.name]?.color || "#9ca3af",
       number: team.number || TEAM_DETAILS[team.name]?.number || String(40 + index),
       tier,
+      program: team.program || createAiProgram(tier),
       stats: { wins: 0, podiums: 0, poles: 0, ...team.stats },
       support: team.support ?? Math.floor(AI_TIERS[tier].support * cfg.economy),
       annualBudget: team.annualBudget ?? Math.floor(AI_TIERS[tier].annual * cfg.economy),
@@ -337,6 +359,7 @@ export const migrateSave = raw => {
     },
     settings: { ...DEFAULT_SETTINGS }
   };
-  game.career.objective = createObjective(game);
-  return game;
+  const migrated = withHomologation(game);
+  migrated.career.objective = createObjective(migrated);
+  return migrated;
 };

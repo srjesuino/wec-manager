@@ -19,6 +19,7 @@ import { buildSeasonSummary, startNextSeason } from "./engine/season";
 import {
   PART_CAP,
   UPGRADE_STEP,
+  usesToken,
   bonusUpgradeChance,
   facilityUpgradeCost,
   staffHiringFee,
@@ -29,7 +30,7 @@ import {
   sponsorSlots
 } from "./engine/economy";
 import { signDriverTo } from "./engine/drivers";
-import { entryById, playerEntries, sharedDevelopment, upgradeCostFor, PLAYER_ID, SISTER_ID } from "./engine/team";
+import { entryById, playerEntries, sharedDevelopment, upgradeCostFor, canUseToken, tokenOwner, PLAYER_ID, SISTER_ID } from "./engine/team";
 import MenuScreen from "./screens/MenuScreen";
 import DashboardScreen from "./screens/DashboardScreen";
 import BriefingScreen from "./screens/BriefingScreen";
@@ -210,6 +211,10 @@ function App() {
     if (entry.car[part] >= PART_CAP) {
       return;
     }
+    if (!canUseToken(game, entry, part)) {
+      notify("Sem fichas de homologação nesta temporada: a peça só pode evoluir na próxima.", "error");
+      return;
+    }
     if (funds < cost) {
       notify("Fundos insuficientes para este upgrade.", "error");
       return;
@@ -217,8 +222,13 @@ function App() {
     const step = Math.random() < bonusUpgradeChance(game.playerTeam) ? UPGRADE_STEP + 1 : UPGRADE_STEP;
     const level = Math.min(PART_CAP, entry.car[part] + step);
     const shared = sharedDevelopment(game);
+    const ownerId = tokenOwner(game, entry).id;
     setGame(g => {
-      const upgrade = team => ({ ...team, car: { ...team.car, [part]: level } });
+      const upgrade = team => ({
+        ...team,
+        car: { ...team.car, [part]: level },
+        ...(team.id === ownerId && usesToken(part) ? { devTokens: Math.max(0, (team.devTokens ?? 0) - 1) } : {})
+      });
       const touches = id => shared || id === entry.id;
       const playerTeam = touches(PLAYER_ID) ? upgrade(g.playerTeam) : g.playerTeam;
       return {

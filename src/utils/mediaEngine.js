@@ -532,13 +532,62 @@ export const generateRegulationNews = (regulation, year) =>
         source: "FIA",
         title: regulation.type === "RESET" ? `Novo regulamento técnico para ${year}!` : `FIA corta desempenho para ${year}`,
         body: regulation.type === "RESET"
-          ? "Todos os carros foram homologados do zero. Quem desenvolver mais rápido sai na frente."
+          ? "Todos os carros foram homologados do zero. Quem acertar o conceito e desenvolver mais rápido sai na frente."
           : "Um ajuste nas regras reduziu o desempenho de todos os carros em 15 pontos.",
         date: "Pré-Temporada",
         read: false,
         importance: "HIGH",
         tags: ["REGULAMENTO"]
       }];
+
+// Mudanças nos programas das equipes da IA (verba da matriz) e o veredito dos testes do regulamento novo
+export const generateAiProgramNews = (headlines, concepts, year) => {
+  const TEXTS = {
+    UP: {
+      title: team => `${team.name} abre o cofre para ${year}`,
+      body: team => `A matriz não gostou da temporada e aprovou um orçamento maior. A ${team.name} (${className(team.class)}) promete um carro muito mais forte.`
+    },
+    BOOST: {
+      title: team => `Reviravolta na ${team.name}: novo parceiro técnico`,
+      body: team => `Depois de anos no fundo do grid da ${className(team.class)}, a ${team.name} anunciou um novo parceiro técnico e um reforço pesado no orçamento.`
+    },
+    CUT: {
+      title: team => `Crise na ${team.name}?`,
+      body: team => `Fontes indicam corte de verba na ${team.name} (${className(team.class)}). A matriz estaria olhando para outros programas e o desenvolvimento deve andar mais devagar.`
+    }
+  };
+  const news = headlines.slice(0, 3).map(({ team, type }) => ({
+    id: generateId(),
+    type: type === "CUT" ? "RUMOR" : "NEWS",
+    source: pickRandom(MEDIA_OUTLETS.filter(o => o.type === (type === "CUT" ? "RUMOR" : "NEWS"))).name,
+    title: TEXTS[type].title(team),
+    body: TEXTS[type].body(team),
+    date: "Intertemporada",
+    read: false,
+    importance: type === "CUT" ? "LOW" : "MEDIUM",
+    tags: ["MERCADO", team.class]
+  }));
+  ["HYPERCAR", "LMGT3"].forEach(cls => {
+    const list = concepts.filter(item => item.team.class === cls).sort((a, b) => b.offset - a.offset);
+    if (list.length < 2) {
+      return;
+    }
+    const best = list[0];
+    const worst = list[list.length - 1];
+    news.push({
+      id: generateId(),
+      type: "NEWS",
+      source: "The Race Analysis",
+      title: `${className(cls)}: ${best.team.name} acerta em cheio o novo regulamento`,
+      body: `Os testes de inverno colocam a ${best.team.name} à frente com folga. Do outro lado, a ${worst.team.name} parece ter errado o conceito e já fala em "temporada de aprendizado".`,
+      date: "Pré-Temporada",
+      read: false,
+      importance: "HIGH",
+      tags: ["REGULAMENTO", cls]
+    });
+  });
+  return news;
+};
 
 export const generatePromotionNews = (playerTeam, year) => [{
   id: generateId(),

@@ -43,6 +43,8 @@ const SECTIONS = [
     icon: Factory,
     items: [
       "P&D: cada upgrade dá +2 na peça (ou +3 com um bom Diretor Técnico). O custo cresce com o nível e dispara acima de 80. A IA paga exatamente o mesmo.",
+      "Homologação: cada carro pode trazer 10 evoluções por temporada (16 no ano de regulamento novo), mais até 8 extras se estiver muito atrás do melhor da classe. A equipe de pit não conta. Dinheiro sobrando vai para fábrica, staff e pilotos.",
+      "Setup: um acerto perfeito vale ritmo de verdade, mas não compensa um carro muito pior — as equipes de fábrica também acertam bem os carros.",
       "BoP: carros acima da média da classe recebem lastro; os mais lentos ganham desempenho (40% da diferença, até ±2%).",
       "Fábrica: túnel de vento e centro de motores barateiam o P&D; o simulador dá mais tentativas de setup; o marketing aumenta os patrocínios.",
       "Equipe técnica: Diretor Técnico (upgrades), Engenheiro de Corrida (setup, previsão e rádio) e Chefe de Mecânicos (pit stops).",
@@ -81,7 +83,8 @@ const SECTIONS = [
     icon: Trophy,
     items: [
       "No fim do ano: prêmio pela posição no campeonato, orçamento da diretoria, evolução dos pilotos e mercado de transferências da IA.",
-      "Regulamento: a cada 3 anos um corte de 15 pontos em todos os carros; a cada 5 anos regulamento novo e todos recomeçam do zero.",
+      "Regulamento: o primeiro regulamento novo chega em 2028 e depois a cada 5 temporadas. Todos ganham carro novo; quem acerta o conceito domina o começo do ciclo, e no fim os custos altos aproximam o grid. O seu conceito depende do Diretor Técnico, do Túnel de Vento e do Centro de Motores.",
+      "Rivais vivos: cada equipe da IA tem verba da matriz e engenharia que mudam todo ano. Quem vai mal recebe mais dinheiro (ou sofre cortes), quem domina perde gente para os rivais, e as fábricas reagem quando uma equipe independente as vence. As mais ricas contratam as estrelas do mercado.",
       "Saves: o jogo salva sozinho no navegador. Use Exportar save para guardar um arquivo .json."
     ]
   }

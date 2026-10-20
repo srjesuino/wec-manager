@@ -1,10 +1,11 @@
-import { Flag, Info, Scale, Settings, Sparkles, Timer, Users, Wrench, Zap } from "lucide-react";
+import { Flag, Info, Lock, Scale, Settings, Sparkles, Stamp, Timer, Users, Wrench, Zap } from "lucide-react";
 import { Fragment, useState } from "react";
-import { PART_INFO, TRACKS } from "../../data/constants";
+import { PART_INFO, TRACKS, HOMOLOGATION } from "../../data/constants";
 import { formatMoney } from "../../utils/helpers";
-import { CAR_PARTS, PART_CAP, facilityDiscount, bonusUpgradeChance } from "../../engine/economy";
+import { CAR_PARTS, PART_CAP, facilityDiscount, bonusUpgradeChance, usesToken } from "../../engine/economy";
 import { allTeams, computeBop, bopWeight } from "../../engine/weekend";
-import { playerEntries, isPlayerId, sharedDevelopment, upgradeCostFor, withTeamFacilities } from "../../engine/team";
+import { playerEntries, isPlayerId, sharedDevelopment, upgradeCostFor, withTeamFacilities, tokensLeft } from "../../engine/team";
+import { regulationFor } from "../../engine/season";
 
 const PART_ICONS = {
   engine: Zap,
@@ -28,8 +29,23 @@ const CarTab = ({ game, onBuyUpgrade }) => {
   const bonus = bonusUpgradeChance(player);
   const track = TRACKS[game.raceIndex];
   const bop = track && game.career.bopEnabled !== false ? computeBop(allTeams(game), track.type)[entry.id] || 0 : 0;
+  const tokens = tokensLeft(game, entry);
+  const newRegs = regulationFor(game.season).type === "RESET";
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className={`rounded-xl p-3 border flex flex-wrap items-center gap-3 ${tokens > 0 ? "bg-gray-900 border-gray-800" : "bg-red-900/20 border-red-800/60"}`}>
+        <Stamp size={20} className={tokens > 0 ? "text-blue-400 shrink-0" : "text-red-400 shrink-0"} />
+        <div className="flex-1 min-w-[200px]">
+          <div className="text-sm font-black text-white">
+            Fichas de homologação{entries.length > 1 && !shared ? ` do #${entry.number}` : ""}: <span className={tokens > 0 ? "text-blue-300" : "text-red-300"}>{tokens}</span> nesta temporada
+          </div>
+          <p className="text-[11px] text-gray-400">
+            Cada evolução de Motor, Aero, Chassi, Confiabilidade ou Eficiência usa uma ficha (a equipe de pit não usa). Todo carro recebe {HOMOLOGATION.base} por temporada
+            ({HOMOLOGATION.newRegulation} no ano de regulamento novo){newRegs ? " — este é um ano de regulamento novo" : ""}, mais até {HOMOLOGATION.catchUpMax} extras se estiver muito atrás do
+            melhor carro da classe. A IA segue a mesma regra.
+          </p>
+        </div>
+      </div>
       {shared && (
         <div className="bg-cyan-900/20 border border-cyan-700/50 rounded-xl p-3 text-sm text-cyan-200 font-bold flex items-center gap-2">
           <Sparkles size={16} className="shrink-0" /> P&D compartilhado: cada upgrade vale para os dois carros (#{entries.map(item => item.number).join(" e #")}) e custa 50% a mais.
@@ -64,6 +80,7 @@ const CarTab = ({ game, onBuyUpgrade }) => {
           const cost = upgradeCostFor(game, entry, part);
           const canAfford = funds >= cost;
           const discount = facilityDiscount(withTeamFacilities(game, entry), part);
+          const locked = usesToken(part) && tokens <= 0;
           return (
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex flex-col justify-between h-full hover:border-gray-600 transition-colors shadow-lg" key={part}>
               <div>
@@ -94,16 +111,20 @@ const CarTab = ({ game, onBuyUpgrade }) => {
                 </div>
               </div>
               <button
-                disabled={!canAfford || level >= PART_CAP}
+                disabled={!canAfford || level >= PART_CAP || locked}
                 onClick={() => onBuyUpgrade(part, entry.id)}
                 className={`w-full mt-4 py-3 rounded-lg font-bold text-xs uppercase tracking-wider transition-all active:scale-95 flex justify-center items-center gap-2 ${
-                  canAfford && level < PART_CAP
+                  canAfford && level < PART_CAP && !locked
                     ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20"
                     : "bg-gray-700 text-gray-500 cursor-not-allowed border border-gray-600"
                 }`}
               >
                 {level >= PART_CAP ? (
                   "MAX"
+                ) : locked ? (
+                  <Fragment>
+                    <Lock size={12} /> Sem fichas até a próxima temporada
+                  </Fragment>
                 ) : (
                   <Fragment>
                     <span>Melhorar</span>
@@ -158,6 +179,10 @@ const CarTab = ({ game, onBuyUpgrade }) => {
               <Sparkles size={12} className="text-yellow-400" /> Diretor Técnico: {Math.round(bonus * 100)}% de chance de um upgrade render +3.
             </li>
             <li>Acima do nível 80 cada upgrade fica bem mais caro.</li>
+            <li>
+              Regulamento novo a cada 5 temporadas: todos ganham carro novo. A qualidade do seu conceito depende do Diretor Técnico, do Túnel de Vento e do Centro de Motores (e de
+              um pouco de sorte). {regulationFor(game.season + 1).text}
+            </li>
           </ul>
         </div>
       </div>

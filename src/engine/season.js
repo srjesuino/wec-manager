@@ -1,43 +1,49 @@
-import { SERIES_CONFIG, TEAM_NAMES, DIFFICULTIES, DRIVERS_PER_CAR } from "../data/constants.js";
-import { generateRookie } from "../utils/helpers.js";
+import { SERIES_CONFIG, TEAM_NAMES, DIFFICULTIES, DRIVERS_PER_CAR, REGULATION_CYCLE, REGULATION_START } from "../data/constants.js";
+import { clamp, randInt, generateRookie } from "../utils/helpers.js";
 import {
   generateSeasonStartNews,
   generateTransferNews,
   generateRegulationNews,
   generatePromotionNews,
-  generateProgramNews
+  generateProgramNews,
+  generateAiProgramNews
 } from "../utils/mediaEngine.js";
 import { classStandings, seasonReview, promotionOffer, createObjective } from "./career.js";
-import { developDriver, willRetire, fillAiVacancies, signDriverTo } from "./drivers.js";
-import { developAiTeams } from "./ai.js";
+import { developDriver, willRetire, fillAiVacancies, recruitStars, signDriverTo } from "./drivers.js";
+import { developAiTeams, evolveAiPrograms, aiAnnualBudget, aiConceptOffset, programOf, gaussian } from "./ai.js";
 import { CAR_PARTS, seasonPrize, driverWageFor, secondCarAnnualBudget, secondCarEntryFee } from "./economy.js";
-import { createAiTeam, createSisterTeam, freshPlayerCar, generateStaffMarket } from "./newGame.js";
+import { createAiTeam, createSisterTeam, freshPlayerCar, generateStaffMarket, withHomologation } from "./newGame.js";
 import { playerEntries, isPlayerId } from "./team.js";
 
-// Regras do original: a cada 5 anos regulamento novo (reset), a cada 3 anos corte de 15 pontos
+// Ciclos de regulamento: a cada REGULATION_CYCLE temporadas, carros novos para todos.
+// No começo do ciclo quem acertou o conceito domina; perto do fim os custos altos fazem o grid se aproximar.
 export const regulationFor = season => {
-  if (season % 5 === 0) {
-    return { type: "RESET", text: "⚠️ REGULAMENTO NOVO! RESET TOTAL!" };
+  const phase = (((season - REGULATION_START) % REGULATION_CYCLE) + REGULATION_CYCLE) % REGULATION_CYCLE;
+  if (phase === 0) {
+    return { type: "RESET", text: "⚠️ REGULAMENTO NOVO! Carros novos para todos — quem acertar o conceito sai na frente." };
   }
-  if (season % 3 === 0) {
-    return { type: "PENALTY", text: "⚠️ AJUSTE DE REGRAS (-15 Performance)" };
-  }
-  return { type: "STABLE", text: "Regulamento estável." };
+  const left = REGULATION_CYCLE - phase;
+  return { type: "STABLE", text: `Regulamento estável (regulamento novo em ${left} temporada${left > 1 ? "s" : ""}).` };
 };
 
-const applyRegulation = (car, regulation) => {
+// Carro do regulamento novo: base comum + qualidade do conceito (a equipe de pit continua a mesma)
+const conceptCar = (car, offset, reliability) => {
   const next = { ...car };
-  if (regulation.type === "STABLE") {
-    return next;
-  }
-  CAR_PARTS.forEach(part => {
-    next[part] = regulation.type === "RESET" ? 30 + Math.floor(Math.random() * 10) : Math.max(10, next[part] - 15);
+  CAR_PARTS.filter(part => part !== "crew" && part !== "reliability").forEach(part => {
+    next[part] = clamp(34 + offset + randInt(-2, 2), 20, 60);
   });
-  if (regulation.type === "RESET") {
-    next.reliability = Math.max(next.reliability, 45 + Math.floor(Math.random() * 10));
-  }
+  next.reliability = clamp(Math.round(reliability), 40, 70);
   return next;
 };
+
+// Conceito do jogador: Diretor Técnico e fábrica (túnel de vento e centro de motores) pesam, mas sempre há sorte
+export const playerConceptOffset = team => {
+  const stars = team.staff?.technicalDirector?.stars ?? 2;
+  const factory = ((team.facilities?.windTunnel ?? 1) + (team.facilities?.engineShop ?? 1)) / 2;
+  return Math.round(clamp((stars - 3) * 2.5 + (factory - 2) * 2 + gaussian() * 5, -10, 14));
+};
+
+const conceptLabel = offset => (offset >= 6 ? "forte" : offset <= -4 ? "fraco" : "na média");
 
 export const renewalWage = (driver, cls) => Math.floor(driverWageFor(driver, cls) * ((driver.morale ?? 75) < 50 ? 1.2 : 1));
 
@@ -115,6 +121,13 @@ const addAiTeam = (aiTeams, cls, takenNames, id) => {
   return [...aiTeams, createAiTeam(cls, name, 8, takenNames, id)];
 };
 
+// Carro do regulamento novo de uma equipe da IA (e anota o conceito para as notícias)
+const aiConceptCar = (team, concepts) => {
+  const offset = aiConceptOffset(team);
+  concepts.push({ team, offset });
+  return conceptCar(team.car, offset, 52 + (programOf(team).engineering - 1) * 30 + randInt(-4, 4));
+};
+
 // Vira a temporada: prêmios, arquivo, regulamento, pilotos, contratos, mercado, orçamento e diretoria
 // decisions: { renew: {driverId: bool}, acceptPromotion, expand: "SAME_CLASS" | "DUAL_CLASS" | null, dropSister, sisterName }
 export const startNextSeason = (game, decisions = {}) => {
@@ -154,8 +167,13 @@ export const startNextSeason = (game, decisions = {}) => {
     .map(driver => developDriver(driver))
     .filter(driver => driver.age <= 40 && !willRetire(driver));
 
+  // A matriz e o departamento técnico de cada equipe da IA reagem à temporada
+  const evolved = evolveAiPrograms(game.aiTeams, standingsOf, { difficulty: game.career.difficulty, isPlayer: isPlayerId });
+  const reset = regulation.type === "RESET";
+  const concepts = [];
+
   // Equipes da IA
-  let aiTeams = game.aiTeams.map(team => {
+  let aiTeams = evolved.aiTeams.map(team => {
     const drivers = [];
     team.drivers.forEach(original => {
       let driver = developDriver(champions.has(team.id) ? crown(original) : original);
@@ -177,8 +195,8 @@ export const startNextSeason = (game, decisions = {}) => {
     return {
       ...team,
       drivers,
-      funds: team.funds + prizeFor(team) + (team.annualBudget || 0),
-      car: applyRegulation(team.car, regulation),
+      funds: team.funds + prizeFor(team) + aiAnnualBudget(team, game.career.difficulty),
+      car: reset ? aiConceptCar(team, concepts) : team.car,
       points: 0,
       stats: { wins: 0, podiums: 0, poles: 0 },
       championships: (team.championships || 0) + (champions.has(team.id) ? 1 : 0),
@@ -249,11 +267,16 @@ export const startNextSeason = (game, decisions = {}) => {
       sister = { ...promote(sister), car: { ...player.car } };
     }
     notes.push(`Promoção aceita! A ${player.name} disputa a Hypercar em ${nextSeason}.`);
-  } else {
-    player.car = applyRegulation(player.car, regulation);
+  } else if (reset) {
+    const playerConcept = entry => {
+      const offset = playerConceptOffset(game.playerTeam);
+      notes.push(`Regulamento novo: o conceito do ${sister ? `#${entry.number}` : "carro"} nasceu ${conceptLabel(offset)} (${offset >= 0 ? "+" : ""}${offset}).`);
+      return conceptCar(entry.car, offset, 48 + (game.playerTeam.staff?.technicalDirector?.stars ?? 2) * 3 + randInt(-3, 3));
+    };
+    player.car = playerConcept(player);
     if (sister) {
       // Mesma classe = mesmo projeto
-      sister.car = sister.class === player.class ? { ...player.car } : applyRegulation(sister.car, regulation);
+      sister.car = sister.class === player.class ? { ...player.car } : playerConcept(sister);
     }
   }
 
@@ -309,7 +332,10 @@ export const startNextSeason = (game, decisions = {}) => {
     pool = filled.pool;
     return filled.team;
   });
-  aiTeams = developAiTeams(aiTeams, 4);
+  // As fábricas com mais verba vão atrás das estrelas do mercado
+  const recruited = recruitStars(aiTeams, pool, transferMoves);
+  aiTeams = recruited.aiTeams;
+  pool = recruited.pool;
   pool = pool.sort((a, b) => b.rating - a.rating).slice(0, 45);
 
   const reviewOf = id => review.entries.find(entry => entry.id === id);
@@ -320,7 +346,7 @@ export const startNextSeason = (game, decisions = {}) => {
     promotions: (game.career.promotions || 0) + (promoted ? 1 : 0)
   };
 
-  const next = {
+  let next = {
     ...game,
     season: nextSeason,
     raceIndex: 0,
@@ -336,15 +362,21 @@ export const startNextSeason = (game, decisions = {}) => {
     },
     career
   };
-  next.career.objective = createObjective(next, promoted ? null : review.position);
+  // Fichas de homologação da nova temporada (mais no ano de regulamento novo)
+  next = withHomologation(next, reset);
+  // Desenvolvimento de inverno da IA (já com as fichas novas)
+  next.aiTeams = developAiTeams(next.aiTeams, 0.25);
+  // No regulamento novo a diretoria olha só para a força do carro novo
+  next.career.objective = createObjective(next, promoted || reset ? null : review.position);
   next.career.objective2 = sister
-    ? createObjective(next, promoted || programChange?.type === "EXPAND" ? null : reviewOf(sister.id)?.position ?? null, sister)
+    ? createObjective(next, promoted || reset || programChange?.type === "EXPAND" ? null : reviewOf(sister.id)?.position ?? null, sister)
     : null;
   next.newsFeed = [
     ...generateSeasonStartNews(nextSeason, player, next.career.objective, sister),
     ...(promoted ? generatePromotionNews(player, nextSeason) : []),
     ...(programChange ? generateProgramNews(player, programChange, nextSeason) : []),
     ...generateRegulationNews(regulation, nextSeason),
+    ...generateAiProgramNews(evolved.headlines, concepts, nextSeason),
     ...generateTransferNews(transferMoves),
     ...game.newsFeed
   ].slice(0, 50);

@@ -7,7 +7,7 @@ import { simulateToEnd } from "../src/engine/race.js";
 import { buildRaceReport, applyRaceResults } from "../src/engine/results.js";
 import { startNextSeason, buildSeasonSummary } from "../src/engine/season.js";
 import { classStandings } from "../src/engine/career.js";
-import { sponsorOffer, sponsorSlots, MAIN_PARTS, PART_CAP } from "../src/engine/economy.js";
+import { sponsorOffer, sponsorSlots, usesToken, MAIN_PARTS, PART_CAP } from "../src/engine/economy.js";
 import { upgradeCostFor, sharedDevelopment } from "../src/engine/team.js";
 
 const seasons = Number(process.argv[2] || 2);
@@ -44,8 +44,11 @@ const managePlayer = g => {
     const support = ["reliability", "efficiency"].find(p => entry.car[p] < mainAvg - 8);
     const part = support || [...MAIN_PARTS].sort((a, b) => entry.car[a] - entry.car[b])[0];
     const cost = upgradeCostFor({ ...g, playerTeam: player, sisterTeam: sister }, entry, part);
+    const owner = shared ? player : entry;
+    if (usesToken(part) && owner.devTokens <= 0) continue;
     if (entry.car[part] >= PART_CAP || player.funds - cost < reserve) break;
     player.funds -= cost;
+    if (usesToken(part)) owner.devTokens -= 1;
     entry.car[part] += 2;
     if (shared && sister) sister.car[part] = entry.car[part];
   }

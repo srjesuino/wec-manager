@@ -46,9 +46,12 @@ export const createObjective = (game, lastPosition = null, entry = game.playerTe
   const size = classTeams(game, entry.class).length;
   const difficulty = game.career.difficulty;
   const shift = { EASY: -1, NORMAL: 0, CLASSIC: 1 }[difficulty] ?? 0;
-  let position = expectedRank(game, entry) - shift;
+  const expected = expectedRank(game, entry) - shift;
+  let position = expected;
+  // Depois de uma temporada a diretoria quer repetir (Fácil) ou melhorar uma posição (Normal/Clássico),
+  // mas nunca mais de 2 posições acima do que o carro promete
   if (lastPosition) {
-    position = Math.min(position, lastPosition > 1 && difficulty !== "EASY" ? lastPosition - 1 : lastPosition);
+    position = Math.max(Math.min(position, lastPosition > 1 && difficulty !== "EASY" ? lastPosition - 1 : lastPosition), expected - 2);
   }
   position = clamp(position, 1, size - 1);
   return {
