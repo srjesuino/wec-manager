@@ -7,6 +7,7 @@ Jogo de gerenciamento de equipe do Mundial de Endurance (Hypercar e LMGT3), em R
 - **Equipe com dois carros**: na nova carreira escolha *Um carro*, *Dois carros na classe* (P&D compartilhado, +50% no custo) ou *Programa duplo* (um Hypercar e um LMGT3). No fim de cada temporada dá para inscrever ou retirar o segundo carro.
 - **Fim de semana com dois carros**: setup e volta lançada para cada carro (ou copie os dados do carro irmão / deixe o piloto fazer a volta), pneu de largada por carro e corrida com seletor de carro, rádio por carro, **ordens de equipe** e inversão de posições.
 - **Diretoria por carro**: cada carro tem a sua meta; o segundo pesa 60% na confiança e no orçamento. Patrocinadores pagam +15% com dois carros na pista.
+- **Motor de equilíbrio novo**: cada equipe da IA tem verba e engenharia que mudam ano a ano (reação a resultados, cortes, viradas), regulamento novo em 2028 e a cada 5 anos com conceitos bons e ruins, homologação (fichas de evolução por temporada) e IA que gasta o orçamento e contrata estrelas. Resultado: eras de domínio que acabam, e um jogo que não fica fácil depois da 3ª temporada.
 
 ```bash
 npm install
@@ -14,6 +15,7 @@ npm run dev        # jogo em http://localhost:5173
 npm run build      # versão de produção em dist/
 npm run testar     # cenários do motor (promoção, demissão, saves antigos, pontos, dois carros)
 npm run simular    # temporadas sem interface: node scripts/simular.mjs [temporadas] [HYPERCAR|LMGT3] [EASY|NORMAL|CLASSIC] [SINGLE|SAME_CLASS|DUAL_CLASS]
+node scripts/equilibrio.mjs 12 HYPERCAR NORMAL 4   # eras de campeões e curva de um jogador habilidoso
 ```
 
 ## Estrutura
@@ -28,8 +30,9 @@ src/
     weekend.js             clima, BoP, classificação e grid
     results.js             pontos, prêmios, salários, patrocínios, reputação
     season.js              virada de temporada (regulamento, contratos, mercado, diretoria, promoção)
-    team.js                carros do jogador (principal + segundo carro), P&D compartilhado
-    economy.js / ai.js / drivers.js / career.js / newGame.js
+    team.js                carros do jogador (principal + segundo carro), P&D compartilhado, fichas
+    ai.js                  programas das equipes da IA (verba, engenharia, reação), desenvolvimento e conceitos
+    economy.js / drivers.js / career.js / newGame.js
   screens/                 menu, painel, briefing, setup, classificação, corrida, resultado, fim de temporada
   components/              abas do painel, mapa da pista, modais, notícias
 scripts/                   simulação, cenários e diagnósticos do motor
