@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BookOpen, Factory, Flag, Fuel, Trophy, Users, X } from "lucide-react";
+import { BookOpen, Car, Factory, Flag, Fuel, Sparkles, Trophy, Users, X } from "lucide-react";
 
 const SECTIONS = [
   {
@@ -58,6 +58,33 @@ const SECTIONS = [
       "Atributos: Ritmo (velocidade), Consistência (menos erros e oscilação), Chuva (desempenho com pista molhada) e Resistência (fadiga mais lenta).",
       "Jovens evoluem até o potencial (com simulador nível 3+ você vê o potencial exato); veteranos perdem rendimento e se aposentam.",
       "Contratos terminam no fim da temporada: você decide quem renovar. Para contratar no meio do ano, alguém precisa sair (com multa rescisória)."
+    ]
+  },
+  {
+    id: "twocars",
+    title: "Equipe com 2 carros",
+    icon: Car,
+    items: [
+      "Programas: Um carro (clássico), Dois carros na mesma classe (como as equipes de fábrica) ou Programa duplo, com um Hypercar e um LMGT3 na mesma equipe.",
+      "Na mesma classe os dois carros usam o mesmo projeto: cada upgrade de P&D vale para os dois, mas custa 50% a mais. No programa duplo, cada carro tem o seu P&D.",
+      "Cada carro tem 3 pilotos, pontos e campeonato próprios. Caixa, reputação, fábrica, equipe técnica e patrocinadores são da equipe. Dá para trocar pilotos de carro na aba Pilotos.",
+      "Custos do 2º carro: operação por corrida (logística e mecânicos) e salários de mais 3 pilotos. Em troca, a diretoria libera uma fatia extra do orçamento anual da classe dele e os patrocinadores pagam +15% pela exposição.",
+      "No fim de semana, o setup e a volta de classificação são feitos para cada carro. O 2º carro pode copiar o acerto do carro principal (com alguma perda) e deixar o piloto fazer a volta sozinho.",
+      "Na corrida, alterne entre os carros para comandar pits e modos. Com os dois na mesma classe, use as ordens de equipe: Manter posições (sem disputa interna) ou trocar as posições quando estiverem juntos.",
+      "A diretoria define uma meta para cada carro. O carro principal conta inteiro na confiança e no orçamento; o segundo carro pesa 60%.",
+      "No fim da temporada você pode inscrever um segundo carro (pagando a inscrição) ou retirar o que já tem."
+    ]
+  },
+  {
+    id: "paddock",
+    title: "Paddock & Conquistas",
+    icon: Sparkles,
+    items: [
+      "Eventos do paddock: entre as corridas surgem dilemas (peças experimentais, teste privado, pedidos de aumento, FIA, imprensa...). Decida na Visão Geral; se você for para a pista sem decidir, o evento é ignorado.",
+      "Pilotos pagantes: alguns pilotos do mercado não cobram luvas e trazem patrocínio pessoal a cada corrida. São mais lentos, mas aliviam o caixa.",
+      "Conquistas: marcos da carreira (primeira vitória, Le Mans, dobradinha, Grand Slam, títulos...) ficam registrados para sempre.",
+      "Recordes: cada pista guarda a volta mais rápida de cada classe. Bater o recorde rende destaque e conquista.",
+      "Piloto do dia: depois de cada corrida o público elege quem mais brilhou na pista."
     ]
   },
   {

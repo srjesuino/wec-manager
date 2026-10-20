@@ -36,6 +36,7 @@ export const fetchAiMediaFeed = async context => {
     Posição Final: P${context.playerPos}
     Status: ${context.playerStatus}
     Sentimento: ${context.playerSentiment}
+    ${context.secondCar ? `Segundo carro da equipe: ${context.secondCar}` : ""}
 
     - Para social, varie entre fãs felizes, haters ou memes sobre a estratégia.
     - O idioma deve ser Português (PT-BR).
@@ -111,7 +112,8 @@ export const buildRaceContext = (report, playerTeam) => {
     playerClass: playerTeam.class,
     playerPos: mine.classPos,
     playerStatus: mine.finished ? "RUN" : "DNF",
-    playerSentiment: sentiment
+    playerSentiment: sentiment,
+    secondCar: (report.players || []).slice(1).map(result => `#${result.number} (${result.class}): ${result.finished ? `P${result.classPos}` : `DNF - ${result.dnfReason}`}`)[0] || null
   };
 };
 
@@ -394,6 +396,39 @@ export const generateRaceMedia = (report, playerTeam, allTeams) => {
       tags: [otherClass]
     });
   }
+  const sister = (report.players || [])[1];
+  if (sister) {
+    const sisterClass = report.classes[sister.class];
+    const winnerOfClass = sisterClass.find(result => result.finished);
+    const sameClass = sister.class === report.player.class;
+    const oneTwo = sameClass && [report.player, sister].every(result => result.finished && result.classPos <= 2);
+    let title;
+    let body;
+    if (oneTwo) {
+      title = `Dobradinha da ${playerTeam.name} em ${trackName}!`;
+      body = `Os carros #${report.player.number} e #${sister.number} cruzaram a linha em 1º e 2º na ${className(sister.class)}. Uma demonstração de força da equipe inteira.`;
+    } else if (!sister.finished) {
+      title = `Carro #${sister.number} abandona em ${trackName}`;
+      body = `O segundo carro da ${playerTeam.name} parou com ${(sister.dnfReason || "problemas").toLowerCase()}. A equipe vai analisar os dados antes da próxima etapa.`;
+    } else if (sister.classPos === 1) {
+      title = `Vitória do #${sister.number} na ${className(sister.class)}!`;
+      body = `O segundo carro da ${playerTeam.name} venceu em ${trackName}${sameClass ? "" : ", fechando um fim de semana de duas frentes para a equipe"}.`;
+    } else {
+      title = `#${sister.number} termina em P${sister.classPos} na ${className(sister.class)}`;
+      body = `${winnerOfClass ? `${winnerOfClass.teamName} venceu, ` : ""}enquanto o segundo carro da ${playerTeam.name} somou ${sister.points} pontos em ${trackName}.`;
+    }
+    feed.push({
+      id: generateId(),
+      type: "NEWS",
+      source: pickRandom(MEDIA_OUTLETS.filter(o => o.type === "NEWS")).name,
+      title,
+      body,
+      date: "Domingo, 17:45",
+      read: false,
+      importance: oneTwo || sister.classPos === 1 ? "HIGH" : "MEDIUM",
+      tags: [sister.class, "EQUIPE"]
+    });
+  }
   const usedPosts = new Set();
   const postCount = 3 + Math.floor(Math.random() * 3);
   for (let i = 0; i < postCount; i++) {
@@ -419,12 +454,14 @@ export const generateRaceMedia = (report, playerTeam, allTeams) => {
 };
 
 // Notícias de abertura da temporada
-export const generateSeasonStartNews = (year, playerTeam, objective) => [{
+export const generateSeasonStartNews = (year, playerTeam, objective, sisterTeam = null) => [{
   id: generateId(),
   type: "NEWS",
   source: "WEC Official",
   title: `Temporada ${year}: A Nova Era Começa`,
-  body: `Todas as equipes apresentaram seus carros. A ${playerTeam.name} promete surpreender, mas os testes de inverno mostram um grid extremamente compacto.`,
+  body: sisterTeam
+    ? `Todas as equipes apresentaram seus carros. A ${playerTeam.name} chega com dois carros — o #${playerTeam.number} na ${className(playerTeam.class)} e o #${sisterTeam.number} na ${className(sisterTeam.class)} — e promete surpreender.`
+    : `Todas as equipes apresentaram seus carros. A ${playerTeam.name} promete surpreender, mas os testes de inverno mostram um grid extremamente compacto.`,
   date: "Pré-Temporada",
   read: false,
   importance: "HIGH",
@@ -449,6 +486,27 @@ export const generateSeasonStartNews = (year, playerTeam, objective) => [{
   shares: 20,
   date: "Há 2h",
   read: false
+}];
+
+const className = cls => (cls === "HYPERCAR" ? "Hypercar" : "LMGT3");
+
+// Segundo carro inscrito ou retirado na intertemporada
+export const generateProgramNews = (playerTeam, change, year) => [{
+  id: generateId(),
+  type: "NEWS",
+  source: "WEC Official",
+  title:
+    change.type === "EXPAND"
+      ? `${playerTeam.name} inscreve o carro #${change.number} na ${className(change.cls)} em ${year}`
+      : `${playerTeam.name} reduz a operação para um carro em ${year}`,
+  body:
+    change.type === "EXPAND"
+      ? "A lista de inscritos foi confirmada pelo ACO. A equipe cresce, contrata mecânicos e promete brigar em duas frentes."
+      : `O carro #${change.number} deixa o grid da ${className(change.cls)}. A diretoria quer concentrar o orçamento em um único programa.`,
+  date: "Pré-Temporada",
+  read: false,
+  importance: "HIGH",
+  tags: ["EQUIPE"]
 }];
 
 // Mercado de pilotos da IA no inverno

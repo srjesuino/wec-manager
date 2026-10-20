@@ -1,5 +1,5 @@
 import { Briefcase, Crown, DollarSign, Gem, Lock, Medal, ShieldCheck, Trophy, TrendingUp, Zap } from "lucide-react";
-import { SPONSORS, TRACKS } from "../../data/constants";
+import { SPONSORS, TRACKS, TWO_CAR_SPONSOR_BONUS } from "../../data/constants";
 import { formatMoney } from "../../utils/helpers";
 import { sponsorOffer, sponsorSlots, sponsorMultiplier } from "../../engine/economy";
 
@@ -46,8 +46,17 @@ const SponsorsTab = ({ game, onSignSponsor }) => {
   const market = SPONSORS.filter(sponsor => !activeIds.includes(sponsor.id));
   const multiplier = sponsorMultiplier(player);
   const leMansDone = game.raceIndex > TRACKS.findIndex(track => track.id === "lemans");
+  const sister = game.sisterTeam;
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      {sister && (
+        <div className="bg-green-900/20 border border-green-800/50 rounded-xl p-4 text-sm text-green-100">
+          <span className="font-black">Dois carros na pista: patrocinadores pagam +{Math.round(TWO_CAR_SPONSOR_BONUS * 100)}% (exposição).</span>{" "}
+          <span className="text-green-200/80">
+            Metas de desempenho, pódio, vitória e Le Mans são conferidas em cada carro pela meta da classe dele (#{player.number} e #{sister.number}): vale o melhor resultado.
+          </span>
+        </div>
+      )}
       <section>
         <h3 className="text-white font-bold uppercase text-sm mb-4 flex items-center gap-2">
           <Briefcase size={16} /> Contratos Ativos ({player.sponsors.length}/{slots})

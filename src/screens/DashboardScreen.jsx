@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Award,
   CalendarDays,
   ChartColumn,
   CircleHelp,
@@ -33,6 +34,8 @@ import SponsorsTab from "../components/dashboard/SponsorsTab";
 import FinancesTab from "../components/dashboard/FinancesTab";
 import CalendarTab from "../components/dashboard/CalendarTab";
 import StandingsTab from "../components/dashboard/StandingsTab";
+import AchievementsTab from "../components/dashboard/AchievementsTab";
+import { playerEntries } from "../engine/team";
 
 const TABS = [
   { id: "overview", label: "Visão Geral", title: "Visão Geral", icon: LayoutDashboard, group: "Gestão" },
@@ -43,7 +46,8 @@ const TABS = [
   { id: "finances", label: "Finanças", title: "Finanças", icon: Wallet, group: "Gestão" },
   { id: "calendar", label: "Calendário", title: "Calendário", icon: CalendarDays, group: "Mundo" },
   { id: "standings", label: "Classificação", title: "Classificação", icon: TrendingUp, group: "Mundo" },
-  { id: "news", label: "Notícias", title: "Centro de Notícias", icon: Globe, group: "Mundo" }
+  { id: "news", label: "Notícias", title: "Centro de Notícias", icon: Globe, group: "Mundo" },
+  { id: "achievements", label: "Conquistas", title: "Conquistas & Recordes", icon: Award, group: "Mundo" }
 ];
 
 const MOBILE_MAIN = ["overview", "car", "drivers"];
@@ -52,6 +56,7 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const player = game.playerTeam;
+  const entries = playerEntries(game);
   const nextRace = TRACKS[game.raceIndex];
   const unreadCount = game.newsFeed.filter(item => !item.read).length;
   const current = TABS.find(tab => tab.id === activeTab) || TABS[0];
@@ -67,7 +72,7 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
       case "factory":
         return <FactoryTab game={game} onUpgradeFacility={actions.upgradeFacility} onHireStaff={actions.hireStaff} />;
       case "drivers":
-        return <DriversTab game={game} onSignDriver={actions.signDriver} onSetStarter={actions.setStarter} />;
+        return <DriversTab game={game} onSignDriver={actions.signDriver} onSetStarter={actions.setStarter} onSwapDrivers={actions.swapDrivers} />;
       case "sponsors":
         return <SponsorsTab game={game} onSignSponsor={actions.signSponsor} />;
       case "finances":
@@ -76,6 +81,8 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
         return <CalendarTab game={game} />;
       case "standings":
         return <StandingsTab game={game} />;
+      case "achievements":
+        return <AchievementsTab game={game} />;
       case "news":
         return (
           <div className="h-full flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-500 min-h-[70vh]">
@@ -83,7 +90,7 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
           </div>
         );
       default:
-        return <OverviewTab game={game} onStartWeekend={actions.startWeekend} setActiveTab={setActiveTab} />;
+        return <OverviewTab game={game} onStartWeekend={actions.startWeekend} setActiveTab={setActiveTab} onResolveEvent={actions.resolveEvent} />;
     }
   };
 
@@ -115,16 +122,33 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
     <div className="h-[100dvh] bg-gray-950 text-white font-sans flex flex-col overflow-hidden">
       <div className="bg-gray-900 border-b border-gray-800 h-16 shrink-0 flex items-center justify-between px-3 md:px-6 z-30 shadow-md gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div
-            className="hidden md:flex w-10 h-10 rounded-lg shadow-lg items-center justify-center font-black italic text-black shrink-0"
-            style={{ backgroundColor: player.color }}
-          >
-            {player.number}
+          <div className="hidden md:flex gap-1 shrink-0">
+            {entries.map(entry => (
+              <div
+                className="relative w-10 h-10 rounded-lg shadow-lg flex items-center justify-center font-black italic text-black"
+                style={{ backgroundColor: entry.color }}
+                title={`#${entry.number} · ${entry.class === "HYPERCAR" ? "Hypercar" : "LMGT3"}`}
+                key={entry.id}
+              >
+                {entry.number}
+                {entries.length > 1 && (
+                  <span className={`absolute -bottom-1 -right-1 text-[7px] not-italic px-1 rounded ${entry.class === "HYPERCAR" ? "bg-red-700 text-white" : "bg-yellow-500 text-black"}`}>
+                    {entry.class === "HYPERCAR" ? "HYP" : "GT3"}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
           <div className="flex flex-col justify-center min-w-0">
             <h1 className="font-black italic text-lg md:text-2xl text-white tracking-tight leading-none truncate max-w-[140px] md:max-w-none">{player.name}</h1>
             <div className="flex items-center gap-2 text-[10px] md:text-xs text-gray-400 uppercase font-bold tracking-wider mt-0.5">
-              <ClassBadge cls={player.class} size="xs" />
+              {entries.map(entry => (
+                // Com dois carros os selos com número já aparecem no desktop; aqui fica só no celular
+                <span className={`flex items-center gap-1 ${entries.length > 1 ? "md:hidden" : ""}`} key={entry.id}>
+                  {entries.length > 1 && <span className="text-gray-400">#{entry.number}</span>}
+                  <ClassBadge cls={entry.class} size="xs" />
+                </span>
+              ))}
               <span className="text-gray-500">
                 S{game.season} · Etapa {Math.min(game.raceIndex + 1, TRACKS.length)}/{TRACKS.length}
               </span>
@@ -148,7 +172,9 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
           <div className="flex flex-col items-end leading-tight">
             <span className="text-[8px] md:text-[10px] text-gray-500 uppercase font-bold hidden md:block">Orçamento</span>
             <span className={`font-mono font-bold text-sm md:text-xl ${player.funds < 1000000 ? "text-red-400" : "text-green-400"}`}>{formatMoney(player.funds)}</span>
-            <span className="text-[10px] font-bold text-yellow-500 md:hidden">{player.points} Pts</span>
+            <span className="text-[10px] font-bold text-yellow-500 md:hidden">
+              {entries.length > 1 ? entries.map(entry => `#${entry.number} ${entry.points}`).join(" · ") : player.points} Pts
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-1 md:gap-2 relative shrink-0">

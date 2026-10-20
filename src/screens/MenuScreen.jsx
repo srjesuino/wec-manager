@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Check, ChevronRight, CircleHelp, CirclePlay, Flag, Gauge, Scale, Timer, Trophy, Upload, X, Zap } from "lucide-react";
-import { DIFFICULTIES, GAME_VERSION, PLAYER_COLORS, SERIES_CONFIG } from "../data/constants";
+import { DIFFICULTIES, GAME_VERSION, PLAYER_COLORS, SERIES_CONFIG, PROGRAMS, PROGRAM_ORDER } from "../data/constants";
 import { formatMoney } from "../utils/helpers";
+import { defaultSisterName, nextCarNumber } from "../engine/newGame";
+import { secondCarStartBudget } from "../engine/economy";
 
 // Segunda etapa da nova carreira: identidade da equipe, dificuldade e BoP
 const NewCareerModal = ({ series, teamName, onCancel, onStart }) => {
@@ -9,15 +11,34 @@ const NewCareerModal = ({ series, teamName, onCancel, onStart }) => {
   const [number, setNumber] = useState("17");
   const [difficulty, setDifficulty] = useState("NORMAL");
   const [bopEnabled, setBopEnabled] = useState(true);
+  const [program, setProgram] = useState("SINGLE");
+  const [sisterName, setSisterName] = useState("");
+  const [sisterNumber, setSisterNumber] = useState("");
   const isHyper = series === "HYPERCAR";
+  const twoCars = program !== "SINGLE";
+  const mainClass = program === "DUAL_CLASS" ? "HYPERCAR" : series;
+  const sisterClass = program === "DUAL_CLASS" ? "LMGT3" : mainClass;
+  const defaultName = defaultSisterName(teamName, program === "SAME_CLASS");
+  const mainNumber = number || "17";
+  const rawSisterNumber = sisterNumber || nextCarNumber(mainNumber);
+  // Os dois carros nunca têm o mesmo número
+  const finalSisterNumber = rawSisterNumber === mainNumber ? nextCarNumber(mainNumber) : rawSisterNumber;
+  const startBudget = option =>
+    SERIES_CONFIG[mainClass].budget * option.budgetMult + (twoCars ? Math.floor(secondCarStartBudget(sisterClass) * option.budgetMult) : 0);
+  const classLabel = cls => (cls === "HYPERCAR" ? "Hypercar" : "LMGT3");
   return (
     <div className="fixed inset-0 bg-gray-950/90 backdrop-blur-sm z-50 overflow-y-auto flex items-start md:items-center justify-center p-0 md:p-4">
       <div className="w-full md:max-w-3xl bg-gray-900 md:border border-gray-700 md:rounded-2xl shadow-2xl min-h-screen md:min-h-0 animate-in fade-in zoom-in-95 duration-300">
         <div className="p-5 md:p-6 border-b border-gray-800 flex justify-between items-start">
           <div>
-            <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded ${isHyper ? "bg-red-600 text-white" : "bg-yellow-600 text-black"}`}>
-              {isHyper ? "Hypercar" : "LMGT3"}
+            <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded ${mainClass === "HYPERCAR" ? "bg-red-600 text-white" : "bg-yellow-600 text-black"}`}>
+              {classLabel(mainClass)}
             </span>
+            {twoCars && (
+              <span className={`ml-1 px-2 py-0.5 text-[10px] font-black uppercase rounded ${sisterClass === "HYPERCAR" ? "bg-red-600 text-white" : "bg-yellow-600 text-black"}`}>
+                + {classLabel(sisterClass)}
+              </span>
+            )}
             <h2 className="text-2xl md:text-3xl font-black italic text-white mt-2">{teamName}</h2>
             <p className="text-gray-400 text-sm">Defina a identidade da equipe e o tamanho do desafio.</p>
           </div>
@@ -26,6 +47,64 @@ const NewCareerModal = ({ series, teamName, onCancel, onStart }) => {
           </button>
         </div>
         <div className="p-5 md:p-6 space-y-8">
+          <div>
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Programa</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {PROGRAM_ORDER.map(id => {
+                const option = PROGRAMS[id];
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setProgram(id)}
+                    className={`text-left p-4 rounded-xl border-2 transition-all ${program === id ? "border-blue-500 bg-blue-900/20" : "border-gray-800 bg-gray-950 hover:border-gray-600"}`}
+                  >
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-black italic text-lg text-white">{option.label}</span>
+                      {program === id && <Check size={18} className="text-blue-400" />}
+                    </div>
+                    <p className="text-xs text-gray-400 leading-snug">{option.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+            {program === "DUAL_CLASS" && !isHyper && (
+              <p className="text-xs text-yellow-300 mt-2">No programa duplo o carro #1 é sempre o Hypercar e o carro #2 corre na LMGT3.</p>
+            )}
+            {program === "DUAL_CLASS" && isHyper && <p className="text-xs text-gray-400 mt-2">Carro #1 na Hypercar e carro #2 na LMGT3.</p>}
+            {twoCars && (
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 mt-4 bg-gray-950 border border-gray-800 rounded-xl p-4">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest" htmlFor="sister-name">
+                    Nome do 2º carro ({classLabel(sisterClass)})
+                  </label>
+                  <input
+                    id="sister-name"
+                    type="text"
+                    value={sisterName}
+                    placeholder={defaultName}
+                    onChange={e => setSisterName(e.target.value)}
+                    className="w-full mt-1 bg-gray-900 border border-gray-700 focus:border-blue-500 outline-none rounded-lg px-3 py-2 font-bold text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest" htmlFor="sister-number">
+                    Número
+                  </label>
+                  <input
+                    id="sister-number"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={3}
+                    value={sisterNumber}
+                    placeholder={nextCarNumber(mainNumber)}
+                    onChange={e => setSisterNumber(e.target.value.replace(/\D/g, ""))}
+                    className="w-24 mt-1 block bg-gray-900 border border-gray-700 focus:border-blue-500 outline-none rounded-lg px-3 py-2 text-xl font-black italic text-center text-white"
+                  />
+                  {rawSisterNumber === mainNumber && <p className="text-[10px] text-yellow-400 mt-1">Número repetido: usaremos #{finalSisterNumber}.</p>}
+                </div>
+              </div>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-6">
             <div>
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Cor da equipe</h3>
@@ -77,7 +156,7 @@ const NewCareerModal = ({ series, teamName, onCancel, onStart }) => {
                   <p className="text-xs text-gray-400 leading-snug mb-3">{option.description}</p>
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-bold uppercase text-gray-500">
                     <span>Carro {option.startCar}</span>
-                    <span>{formatMoney(SERIES_CONFIG[series].budget * option.budgetMult)}</span>
+                    <span>{formatMoney(startBudget(option))}</span>
                     <span>{option.canBeFired ? "Pode ser demitido" : "Sem demissão"}</span>
                   </div>
                 </button>
@@ -105,7 +184,19 @@ const NewCareerModal = ({ series, teamName, onCancel, onStart }) => {
             Voltar
           </button>
           <button
-            onClick={() => onStart({ teamName, series, color, number: number || "17", difficulty, bopEnabled })}
+            onClick={() =>
+              onStart({
+                teamName,
+                series,
+                color,
+                number: mainNumber,
+                difficulty,
+                bopEnabled,
+                program,
+                sisterName: twoCars ? sisterName.trim() || defaultName : undefined,
+                sisterNumber: twoCars ? finalSisterNumber : undefined
+              })
+            }
             className="flex-1 py-4 rounded-xl font-black text-lg bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30 active:scale-95 transition-all uppercase tracking-wider"
           >
             Começar carreira

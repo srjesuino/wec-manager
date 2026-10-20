@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import { formatMoney } from "../../utils/helpers";
-import { driversPayroll, staffPayroll, facilityUpkeep, sponsorMultiplier } from "../../engine/economy";
+import { TWO_CAR_SPONSOR_BONUS } from "../../data/constants";
+import { driversPayroll, driversBacking, staffPayroll, facilityUpkeep, sponsorMultiplier, secondCarOperations } from "../../engine/economy";
 
 // Gráfico simples do saldo ao longo das corridas
 const BalanceChart = ({ entries }) => {
@@ -40,11 +41,16 @@ const FinancesTab = ({ game }) => {
   const items = seasonEntries.flatMap(entry => entry.items);
   const income = items.filter(item => item.amount > 0).reduce((sum, item) => sum + item.amount, 0);
   const expenses = items.filter(item => item.amount < 0).reduce((sum, item) => sum + item.amount, 0);
-  const wages = driversPayroll(player);
+  const sister = game.sisterTeam;
+  const lineups = [player, sister].filter(Boolean);
+  const backing = lineups.reduce((sum, team) => sum + driversBacking(team), 0);
+  const wages = lineups.reduce((sum, team) => sum + driversPayroll(team), 0) + backing;
   const staff = staffPayroll(player);
   const upkeep = facilityUpkeep(player);
-  const sponsors = player.sponsors.reduce((sum, contract) => sum + (contract.type === "GAMBLE" ? contract.maxRandom / 2 : contract.perRacePayment), 0) * sponsorMultiplier(player);
-  const projected = sponsors - wages - staff - upkeep;
+  const operations = sister ? secondCarOperations(sister.class) : 0;
+  const sponsorMult = sponsorMultiplier(player) * (sister ? 1 + TWO_CAR_SPONSOR_BONUS : 1);
+  const sponsors = player.sponsors.reduce((sum, contract) => sum + (contract.type === "GAMBLE" ? contract.maxRandom / 2 : contract.perRacePayment), 0) * sponsorMult;
+  const projected = sponsors + backing - wages - staff - upkeep - operations;
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -74,8 +80,14 @@ const FinancesTab = ({ game }) => {
               <span className="text-gray-400">Patrocínios (estimado)</span>
               <span className="font-mono text-green-300">+{formatMoney(sponsors)}</span>
             </div>
+            {backing > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Pilotos pagantes</span>
+                <span className="font-mono text-green-300">+{formatMoney(backing)}</span>
+              </div>
+            )}
             <div className="flex justify-between">
-              <span className="text-gray-400">Salários dos pilotos</span>
+              <span className="text-gray-400">Salários dos pilotos{sister ? " (2 carros)" : ""}</span>
               <span className="font-mono text-red-300">-{formatMoney(wages)}</span>
             </div>
             <div className="flex justify-between">
@@ -86,6 +98,12 @@ const FinancesTab = ({ game }) => {
               <span className="text-gray-400">Manutenção das instalações</span>
               <span className="font-mono text-red-300">-{formatMoney(upkeep)}</span>
             </div>
+            {sister && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Operação do 2º carro (#{sister.number})</span>
+                <span className="font-mono text-red-300">-{formatMoney(operations)}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-gray-800 pt-2 font-bold">
               <span className="text-gray-300">Sem contar prêmios</span>
               <span className={`font-mono ${projected >= 0 ? "text-green-400" : "text-red-400"}`}>

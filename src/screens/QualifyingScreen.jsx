@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { CirclePlay, CloudRain, Crown, Timer, Zap } from "lucide-react";
+import { Bot, CirclePlay, CloudRain, Crown, Timer, Zap } from "lucide-react";
 import { TYRES, TYRE_ORDER } from "../data/constants";
 import { formatLapTime } from "../utils/helpers";
-import { qualifyingBarFactor } from "../engine/weekend";
+import { qualifyingBarFactor, entrySetupScore, entryQualyScore } from "../engine/weekend";
+import { SISTER_ID } from "../engine/team";
 import { TeamStripe } from "../components/ui/common";
 
 const SECTOR_STYLES = {
@@ -13,7 +14,7 @@ const SECTOR_STYLES = {
 };
 
 // Minigame: travar a barra na zona roxa em cada um dos 3 setores
-const QualifyingGame = ({ teamName, trackName, barFactor, onComplete }) => {
+const QualifyingGame = ({ teamName, trackName, barFactor, onComplete, carInfo = null, onAuto = null }) => {
   const [sector, setSector] = useState(1);
   const [phase, setPhase] = useState("waiting");
   const [barPosition, setBarPosition] = useState(0);
@@ -115,6 +116,15 @@ const QualifyingGame = ({ teamName, trackName, barFactor, onComplete }) => {
           <h2 className="text-xs md:text-sm font-bold text-gray-500 tracking-widest uppercase mb-1">{teamName}</h2>
           <h1 className="text-2xl md:text-4xl font-black italic text-white uppercase">{trackName}</h1>
           <div className="text-xs text-blue-400 font-bold mt-1 uppercase tracking-widest">Sessão de Qualificação</div>
+          {carInfo && (
+            <div className="inline-flex items-center gap-2 mt-2">
+              <span className={`text-[10px] font-black px-2 py-0.5 rounded ${carInfo.class === "HYPERCAR" ? "bg-red-900 text-red-200" : "bg-yellow-900 text-yellow-200"}`}>
+                {carInfo.class === "HYPERCAR" ? "HYP" : "GT3"}
+              </span>
+              <span className="text-sm font-black text-white">Carro #{carInfo.number}</span>
+              <span className="text-[10px] text-gray-500 font-bold uppercase">{carInfo.step}</span>
+            </div>
+          )}
         </div>
         <div className="flex gap-2 md:gap-4 mb-8 md:mb-12 w-full justify-center">
           {[1, 2, 3].map(sectorNumber => {
@@ -188,6 +198,14 @@ const QualifyingGame = ({ teamName, trackName, barFactor, onComplete }) => {
           <div className="mt-4 text-center text-[10px] md:text-xs text-gray-500">
             Toque em "TRAVAR" (ou aperte Espaço) quando a barra estiver na zona roxa central.
           </div>
+          {onAuto && phase === "waiting" && results.length === 0 && (
+            <button
+              onClick={onAuto}
+              className="mt-4 w-full py-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-xl font-bold text-sm text-gray-200 flex items-center justify-center gap-2 active:scale-95"
+            >
+              <Bot size={16} /> Deixar o piloto fazer a volta
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -205,8 +223,13 @@ const TYRE_HINTS = {
 const QualifyingResults = ({ game, weekend, onStartRace }) => {
   const player = game.playerTeam;
   const [view, setView] = useState(player.class);
-  const [tyre, setTyre] = useState(weekend.startTyre);
-  const mine = weekend.qualifying.find(entry => entry.isPlayer);
+  const mineAll = weekend.qualifying.filter(entry => entry.isPlayer).sort((a, b) => (a.teamId === "player" ? -1 : b.teamId === "player" ? 1 : 0));
+  const mine = mineAll[0];
+  const twoCars = mineAll.length > 1;
+  const [tyres, setTyres] = useState(() => Object.fromEntries(mineAll.map(entry => [entry.teamId, weekend.startTyre])));
+  const [tyreCar, setTyreCar] = useState(mine.teamId);
+  const tyre = tyres[tyreCar];
+  const setTyre = id => setTyres(prev => ({ ...prev, [tyreCar]: id }));
   const rows = weekend.qualifying.filter(entry => entry.class === view);
   const wet = weekend.startWetness > 30;
   return (
@@ -214,17 +237,44 @@ const QualifyingResults = ({ game, weekend, onStartRace }) => {
       <div className="w-full max-w-5xl">
         <div className="text-center mb-6 animate-in fade-in slide-in-from-top-4 duration-500">
           <p className="text-xs font-bold text-blue-400 uppercase tracking-widest">Resultado da Classificação · {weekend.track.name}</p>
-          <h1 className="text-4xl md:text-6xl font-black italic mt-2">
-            P{mine.classPosition} <span className="text-lg md:text-2xl text-gray-500 not-italic font-bold">na classe · P{mine.position} geral</span>
-          </h1>
-          {mine.pole && (
-            <div className="inline-flex items-center gap-2 mt-3 bg-purple-600 text-white font-black px-4 py-2 rounded-full shadow-lg shadow-purple-900/40 animate-in zoom-in duration-500">
-              <Crown size={18} /> POLE POSITION! +1 ponto no campeonato
+          {twoCars ? (
+            <div className="flex flex-wrap justify-center gap-4 md:gap-10 mt-2">
+              {mineAll.map(entry => (
+                <div key={entry.teamId}>
+                  <h1 className="text-4xl md:text-5xl font-black italic">
+                    P{entry.classPosition}{" "}
+                    <span className="text-base md:text-xl text-gray-500 not-italic font-bold">
+                      na classe · #{entry.number} {entry.class === "HYPERCAR" ? "HYP" : "GT3"}
+                    </span>
+                  </h1>
+                  {entry.pole && (
+                    <div className="inline-flex items-center gap-1 mt-2 bg-purple-600 text-white font-black text-xs px-3 py-1 rounded-full">
+                      <Crown size={14} /> POLE! +1 ponto
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-400 mt-1">
+                    Setup {entrySetupScore(weekend, entry.teamId).toFixed(0)}% · Volta {entryQualyScore(weekend, entry.teamId).toFixed(0)}% · {formatLapTime(entry.lapTime)} com{" "}
+                    {entry.driver}
+                  </p>
+                </div>
+              ))}
             </div>
+          ) : (
+            <>
+              <h1 className="text-4xl md:text-6xl font-black italic mt-2">
+                P{mine.classPosition} <span className="text-lg md:text-2xl text-gray-500 not-italic font-bold">na classe · P{mine.position} geral</span>
+              </h1>
+              {mine.pole && (
+                <div className="inline-flex items-center gap-2 mt-3 bg-purple-600 text-white font-black px-4 py-2 rounded-full shadow-lg shadow-purple-900/40 animate-in zoom-in duration-500">
+                  <Crown size={18} /> POLE POSITION! +1 ponto no campeonato
+                </div>
+              )}
+              <p className="text-sm text-gray-400 mt-2">
+                Setup {entrySetupScore(weekend, mine.teamId).toFixed(0)}% · Volta {entryQualyScore(weekend, mine.teamId).toFixed(0)}% · Melhor volta {formatLapTime(mine.lapTime)} com{" "}
+                {mine.driver}
+              </p>
+            </>
           )}
-          <p className="text-sm text-gray-400 mt-2">
-            Setup {weekend.setupScore.toFixed(0)}% · Volta {weekend.qualyScore.toFixed(0)}% · Melhor volta {formatLapTime(mine.lapTime)} com {mine.driver}
-          </p>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
           <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
@@ -277,6 +327,22 @@ const QualifyingResults = ({ game, weekend, onStartRace }) => {
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col gap-4">
             <div>
               <h3 className="font-bold text-sm uppercase text-gray-300">Pneu de largada</h3>
+              {twoCars && (
+                <div className="flex gap-1 mt-2">
+                  {mineAll.map(entry => (
+                    <button
+                      key={entry.teamId}
+                      onClick={() => setTyreCar(entry.teamId)}
+                      className={`flex-1 py-1.5 rounded border text-xs font-black flex items-center justify-center gap-1 ${tyreCar === entry.teamId ? "bg-blue-900/40 border-blue-500 text-white" : "bg-gray-950 border-gray-700 text-gray-400"}`}
+                    >
+                      #{entry.number}
+                      <span className="text-[9px] font-mono" style={{ color: TYRES[tyres[entry.teamId]]?.color }}>
+                        {TYRES[tyres[entry.teamId]]?.short}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {wet ? (
                 <p className="text-xs text-blue-300 flex items-center gap-1 mt-1">
                   <CloudRain size={12} /> Pista molhada na largada: pneus de chuva recomendados.
@@ -307,7 +373,7 @@ const QualifyingResults = ({ game, weekend, onStartRace }) => {
               })}
             </div>
             <button
-              onClick={() => onStartRace(tyre)}
+              onClick={() => onStartRace(twoCars ? tyres : tyre)}
               className="mt-auto w-full py-4 bg-green-600 hover:bg-green-500 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg shadow-green-900/30 flex items-center justify-center gap-2 active:scale-95 transition-all"
             >
               <CirclePlay size={22} /> Ir para a largada
@@ -319,16 +385,26 @@ const QualifyingResults = ({ game, weekend, onStartRace }) => {
   );
 };
 
-const QualifyingScreen = ({ game, weekend, onQualyComplete, onStartRace }) => {
+// Volta automática do piloto (segundo carro): depende da consistência do melhor piloto
+const autoQualyScore = car => {
+  const consistency = Math.max(...car.drivers.map(driver => driver.attrs?.consistency ?? driver.rating ?? 60));
+  return Math.max(0, Math.min(100, 35 + consistency * 0.35 + Math.random() * 20));
+};
+
+const QualifyingScreen = ({ game, weekend, entry, onQualyComplete, onStartRace }) => {
   if (weekend.qualifying) {
     return <QualifyingResults game={game} weekend={weekend} onStartRace={onStartRace} />;
   }
+  const car = entry || game.playerTeam;
+  const twoCars = !!game.sisterTeam;
   return (
     <QualifyingGame
-      teamName={game.playerTeam.name}
+      teamName={twoCars ? car.name : game.playerTeam.name}
       trackName={weekend.track.name}
       barFactor={qualifyingBarFactor(game.playerTeam)}
       onComplete={onQualyComplete}
+      carInfo={twoCars ? { number: car.number, class: car.class, step: car.id === SISTER_ID ? "2º carro" : "1º carro" } : null}
+      onAuto={car.id === SISTER_ID ? () => onQualyComplete(autoQualyScore(car)) : null}
     />
   );
 };

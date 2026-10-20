@@ -1,9 +1,10 @@
 import { Flag, Info, Scale, Settings, Sparkles, Timer, Users, Wrench, Zap } from "lucide-react";
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { PART_INFO, TRACKS } from "../../data/constants";
 import { formatMoney } from "../../utils/helpers";
-import { CAR_PARTS, PART_CAP, upgradeCost, facilityDiscount, bonusUpgradeChance } from "../../engine/economy";
+import { CAR_PARTS, PART_CAP, facilityDiscount, bonusUpgradeChance } from "../../engine/economy";
 import { allTeams, computeBop, bopWeight } from "../../engine/weekend";
+import { playerEntries, isPlayerId, sharedDevelopment, upgradeCostFor, withTeamFacilities } from "../../engine/team";
 
 const PART_ICONS = {
   engine: Zap,
@@ -16,22 +17,53 @@ const PART_ICONS = {
 
 const CarTab = ({ game, onBuyUpgrade }) => {
   const player = game.playerTeam;
-  const rivals = allTeams(game).filter(team => team.class === player.class && team.id !== player.id);
+  const entries = playerEntries(game);
+  const shared = sharedDevelopment(game);
+  const [entryId, setEntryId] = useState(player.id);
+  const entry = (!shared && entries.find(item => item.id === entryId)) || player;
+  const funds = player.funds;
+  const rivals = allTeams(game).filter(team => team.class === entry.class && !isPlayerId(team.id));
   const best = part => Math.max(...rivals.map(team => team.car[part]));
   const avg = part => Math.round(rivals.reduce((sum, team) => sum + team.car[part], 0) / Math.max(1, rivals.length));
   const bonus = bonusUpgradeChance(player);
   const track = TRACKS[game.raceIndex];
-  const bop = track && game.career.bopEnabled !== false ? computeBop(allTeams(game), track.type)[player.id] || 0 : 0;
+  const bop = track && game.career.bopEnabled !== false ? computeBop(allTeams(game), track.type)[entry.id] || 0 : 0;
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      {shared && (
+        <div className="bg-cyan-900/20 border border-cyan-700/50 rounded-xl p-3 text-sm text-cyan-200 font-bold flex items-center gap-2">
+          <Sparkles size={16} className="shrink-0" /> P&D compartilhado: cada upgrade vale para os dois carros (#{entries.map(item => item.number).join(" e #")}) e custa 50% a mais.
+        </div>
+      )}
+      {!shared && entries.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold uppercase text-gray-500">Carro:</span>
+          {entries.map(item => (
+            <button
+              key={item.id}
+              onClick={() => setEntryId(item.id)}
+              className={`px-4 py-2 rounded-lg border-2 font-black text-sm flex items-center gap-2 transition-colors ${
+                entry.id === item.id
+                  ? item.class === "HYPERCAR"
+                    ? "border-red-500 bg-red-900/30 text-white"
+                    : "border-yellow-500 bg-yellow-900/30 text-white"
+                  : "border-gray-800 bg-gray-900 text-gray-400 hover:border-gray-600"
+              }`}
+            >
+              #{item.number} <span className="text-[10px]">{item.class === "HYPERCAR" ? "HYP" : "GT3"}</span>
+            </button>
+          ))}
+          <span className="text-[11px] text-gray-500">Cada carro tem o próprio projeto; os custos seguem a classe dele.</span>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {CAR_PARTS.map(part => {
           const info = PART_INFO[part];
           const Icon = PART_ICONS[part];
-          const level = player.car[part] || 0;
-          const cost = upgradeCost(player, part);
-          const canAfford = player.funds >= cost;
-          const discount = facilityDiscount(player, part);
+          const level = entry.car[part] || 0;
+          const cost = upgradeCostFor(game, entry, part);
+          const canAfford = funds >= cost;
+          const discount = facilityDiscount(withTeamFacilities(game, entry), part);
           return (
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex flex-col justify-between h-full hover:border-gray-600 transition-colors shadow-lg" key={part}>
               <div>
@@ -63,7 +95,7 @@ const CarTab = ({ game, onBuyUpgrade }) => {
               </div>
               <button
                 disabled={!canAfford || level >= PART_CAP}
-                onClick={() => onBuyUpgrade(part)}
+                onClick={() => onBuyUpgrade(part, entry.id)}
                 className={`w-full mt-4 py-3 rounded-lg font-bold text-xs uppercase tracking-wider transition-all active:scale-95 flex justify-center items-center gap-2 ${
                   canAfford && level < PART_CAP
                     ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20"

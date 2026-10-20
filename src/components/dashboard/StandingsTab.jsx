@@ -3,6 +3,7 @@ import { TrendingUp } from "lucide-react";
 import { classStandings } from "../../engine/career";
 import { classTeams } from "../../engine/weekend";
 import { Flag, TeamStripe } from "../ui/common";
+import { isPlayerId } from "../../engine/team";
 
 const positionLabel = index =>
   index === 0 ? <span className="text-yellow-400 text-base">1º</span> : index === 1 ? <span className="text-gray-300 text-base">2º</span> : index === 2 ? <span className="text-orange-400 text-base">3º</span> : `${index + 1}º`;
@@ -51,15 +52,15 @@ const StandingsTab = ({ game }) => {
             </thead>
             <tbody className="divide-y divide-gray-800 text-sm">
               {sortedTeams.map((team, index) => (
-                <tr className={`hover:bg-gray-800/30 transition-colors ${team.id === "player" ? "bg-blue-900/10 border-l-4 border-l-blue-500" : ""}`} key={team.id}>
+                <tr className={`hover:bg-gray-800/30 transition-colors ${isPlayerId(team.id) ? "bg-blue-900/10 border-l-4 border-l-blue-500" : ""}`} key={team.id}>
                   <td className="p-2 md:p-4 text-center font-mono font-bold text-gray-400 text-xs md:text-sm">{positionLabel(index)}</td>
                   <td className="p-2 md:p-4">
                     <div className="flex items-center gap-2">
                       <TeamStripe color={team.color} />
                       <span className="text-[10px] font-mono text-gray-500 w-6">#{team.number}</span>
                       <div className="min-w-0">
-                        <div className={`font-bold text-xs md:text-base truncate max-w-[140px] md:max-w-none ${team.id === "player" ? "text-blue-400" : "text-white"}`}>{team.name}</div>
-                        {team.id === "player" && <div className="text-[8px] text-gray-500 uppercase mt-0.5 md:hidden">Você</div>}
+                        <div className={`font-bold text-xs md:text-base truncate max-w-[140px] md:max-w-none ${isPlayerId(team.id) ? "text-blue-400" : "text-white"}`}>{team.name}</div>
+                        {isPlayerId(team.id) && <div className="text-[8px] text-gray-500 uppercase mt-0.5 md:hidden">Você</div>}
                       </div>
                     </div>
                   </td>
@@ -86,10 +87,10 @@ const StandingsTab = ({ game }) => {
             </thead>
             <tbody className="divide-y divide-gray-800 text-sm">
               {drivers.map((driver, index) => (
-                <tr className={`hover:bg-gray-800/30 ${driver.team.id === "player" ? "bg-blue-900/10" : ""}`} key={driver.id}>
+                <tr className={`hover:bg-gray-800/30 ${isPlayerId(driver.team.id) ? "bg-blue-900/10" : ""}`} key={driver.id}>
                   <td className="p-2 md:p-4 text-center font-mono font-bold text-gray-400 text-xs md:text-sm">{positionLabel(index)}</td>
                   <td className="p-2 md:p-4">
-                    <div className={`font-bold ${driver.team.id === "player" ? "text-blue-300" : "text-white"}`}>
+                    <div className={`font-bold ${isPlayerId(driver.team.id) ? "text-blue-300" : "text-white"}`}>
                       <Flag driver={driver} /> {driver.name}
                     </div>
                     <div className="text-[10px] text-gray-500 md:hidden">{driver.team.name}</div>

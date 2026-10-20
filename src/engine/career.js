@@ -2,6 +2,7 @@ import { DIFFICULTIES } from "../data/constants.js";
 import { clamp } from "../utils/helpers.js";
 import { carPerformance } from "./race.js";
 import { classTeams, computeBop } from "./weekend.js";
+import { isPlayerId, playerEntries, SISTER_ID } from "./team.js";
 
 // Classificação por pontos, com desempate por vitórias e pódios
 export const sortStandings = teams =>
@@ -17,8 +18,11 @@ export const sortStandings = teams =>
 
 export const classStandings = (game, cls) => sortStandings(classTeams(game, cls));
 
-export const playerStanding = game =>
-  classStandings(game, game.playerTeam.class).findIndex(team => team.id === game.playerTeam.id) + 1;
+// Posição de um dos carros do jogador no campeonato da sua classe (padrão: carro principal)
+export const playerStanding = (game, entry = game.playerTeam) => classStandings(game, entry.class).findIndex(team => team.id === entry.id) + 1;
+
+// Objetivo da diretoria de cada carro
+export const objectiveFor = (game, entry) => (entry?.id === SISTER_ID ? game.career.objective2 : game.career.objective);
 
 // Força estimada (carro + BoP + pilotos) para prever o lugar da equipe na classe
 export const teamStrength = (team, bop = 0) =>
@@ -28,21 +32,21 @@ export const teamStrength = (team, bop = 0) =>
   (team.drivers.reduce((sum, driver) => sum + driver.rating, 0) / team.drivers.length) * 0.6;
 
 // Lugar previsto pela diretoria (o jogador ganha um pequeno bônus pelo trabalho de setup)
-export const expectedRank = game => {
-  const teams = classTeams(game, game.playerTeam.class);
+export const expectedRank = (game, entry = game.playerTeam) => {
+  const teams = classTeams(game, entry.class);
   const bop = game.career?.bopEnabled !== false ? computeBop(teams, "balanced") : {};
-  const strength = team => teamStrength(team, bop[team.id] || 0) + (team.id === game.playerTeam.id ? 6 : 0);
+  const strength = team => teamStrength(team, bop[team.id] || 0) + (isPlayerId(team.id) ? 6 : 0);
   const sorted = [...teams].sort((a, b) => strength(b) - strength(a));
-  return sorted.findIndex(team => team.id === game.playerTeam.id) + 1;
+  return sorted.findIndex(team => team.id === entry.id) + 1;
 };
 
 // Objetivo da diretoria para a temporada: o previsto pelo carro, e depois de uma temporada,
 // pelo menos repetir (Fácil) ou melhorar em uma posição (Normal/Clássico) o resultado anterior
-export const createObjective = (game, lastPosition = null) => {
-  const size = classTeams(game, game.playerTeam.class).length;
+export const createObjective = (game, lastPosition = null, entry = game.playerTeam) => {
+  const size = classTeams(game, entry.class).length;
   const difficulty = game.career.difficulty;
   const shift = { EASY: -1, NORMAL: 0, CLASSIC: 1 }[difficulty] ?? 0;
-  let position = expectedRank(game) - shift;
+  let position = expectedRank(game, entry) - shift;
   if (lastPosition) {
     position = Math.min(position, lastPosition > 1 && difficulty !== "EASY" ? lastPosition - 1 : lastPosition);
   }
@@ -94,37 +98,62 @@ export const confidenceRaceDelta = (result, objective, difficulty) => {
   return 0;
 };
 
-// Avaliação de fim de temporada
+// Avaliação de um carro: objetivo cumprido, quase ou longe
+const entryVerdict = (position, objective) => {
+  if (position <= objective.position) {
+    return { met: true, delta: 15, budgetFactor: 1.15, tone: "good" };
+  }
+  if (position <= objective.position + 2) {
+    return { met: false, delta: -5, budgetFactor: 1, tone: "warn" };
+  }
+  return { met: false, delta: -25, budgetFactor: 0.85, tone: "danger", failed: true };
+};
+
+// Avaliação de fim de temporada (com dois carros, o segundo pesa 60% na confiança e no orçamento)
 export const seasonReview = game => {
-  const position = playerStanding(game);
-  const objective = game.career.objective;
   const difficulty = DIFFICULTIES[game.career.difficulty] || DIFFICULTIES.NORMAL;
-  let delta;
-  let budgetFactor;
+  const entries = playerEntries(game)
+    .map(entry => {
+      const objective = objectiveFor(game, entry);
+      if (!objective) {
+        return null;
+      }
+      const position = playerStanding(game, entry);
+      const verdict = entryVerdict(position, objective);
+      const delta = verdict.failed ? -Math.round(25 * difficulty.confidenceMult) : verdict.delta;
+      return { id: entry.id, number: entry.number, class: entry.class, name: entry.name, position, objective, ...verdict, delta };
+    })
+    .filter(Boolean);
+  const [main, second] = entries;
+  const weight = second ? 0.6 : 0;
+  const delta = Math.round(main.delta + (second?.delta ?? 0) * weight);
+  const budgetFactor = Math.round(((main.budgetFactor + (second?.budgetFactor ?? 0) * weight) / (1 + weight)) * 100) / 100;
+  const allMet = entries.every(entry => entry.met);
+  const anyMet = entries.some(entry => entry.met);
   let verdict;
   let tone;
-  if (position <= objective.position) {
-    delta = 15;
-    budgetFactor = 1.15;
-    verdict = "A diretoria está muito satisfeita: objetivo cumprido! Orçamento ampliado para a próxima temporada.";
+  if (allMet) {
+    verdict = second
+      ? "A diretoria está radiante: os dois carros cumpriram as metas! Orçamento ampliado para a próxima temporada."
+      : "A diretoria está muito satisfeita: objetivo cumprido! Orçamento ampliado para a próxima temporada.";
     tone = "good";
-  } else if (position <= objective.position + 2) {
-    delta = -5;
-    budgetFactor = 1;
+  } else if (second && anyMet) {
+    verdict = `Temporada dividida: ${main.met ? `o #${main.number}` : `o #${second.number}`} cumpriu a meta, mas o outro carro ficou devendo.`;
+    tone = "warn";
+  } else if (entries.every(entry => !entry.failed)) {
     verdict = "Objetivo não alcançado por pouco. A diretoria espera evolução no próximo ano.";
     tone = "warn";
   } else {
-    delta = -Math.round(25 * difficulty.confidenceMult);
-    budgetFactor = 0.85;
     verdict = "Temporada decepcionante. A diretoria cortou parte do orçamento.";
     tone = "danger";
   }
   const confidence = clamp(game.career.confidence + delta, 0, 100);
   const fired = difficulty.canBeFired && confidence <= 0;
   return {
-    position,
-    objective,
-    met: position <= objective.position,
+    position: main.position,
+    objective: main.objective,
+    met: main.met,
+    entries,
     delta,
     confidence,
     budgetFactor,
@@ -135,5 +164,11 @@ export const seasonReview = game => {
 };
 
 // Convite para subir da LMGT3 para a Hypercar
-export const promotionOffer = (game, position) =>
-  game.playerTeam.class === "LMGT3" && (position === 1 || (position <= 3 && game.playerTeam.reputation >= 55));
+// (no programa duplo a equipe já está na Hypercar; com dois GT3, vale o melhor carro)
+export const promotionOffer = (game, position) => {
+  if (game.playerTeam.class !== "LMGT3" || (game.sisterTeam && game.sisterTeam.class !== "LMGT3")) {
+    return false;
+  }
+  const best = Math.min(position, ...(game.sisterTeam ? [playerStanding(game, game.sisterTeam)] : []));
+  return best === 1 || (best <= 3 && game.playerTeam.reputation >= 55);
+};

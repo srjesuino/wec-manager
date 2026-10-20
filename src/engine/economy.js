@@ -1,4 +1,4 @@
-import { SERIES_CONFIG, FACILITY_ORDER, STAFF_ORDER } from "../data/constants.js";
+import { SERIES_CONFIG, FACILITY_ORDER, STAFF_ORDER, SECOND_CAR } from "../data/constants.js";
 import { calculateWage } from "../utils/helpers.js";
 
 export const CAR_PARTS = ["engine", "aero", "chassis", "reliability", "efficiency", "crew"];
@@ -73,8 +73,11 @@ export const staffPayroll = team => {
 // ---------------------------------------------------------------------------
 
 export const driverWageFor = (driver, cls) => Math.floor(calculateWage(driver.rating) * econ(cls));
-export const signingFee = (driver, cls) => Math.floor(driver.marketValue * econ(cls));
-export const driversPayroll = team => team.drivers.reduce((sum, driver) => sum + (driver.wage || 0), 0);
+export const signingFee = (driver, cls) => (driver.backing ? 0 : Math.floor(driver.marketValue * econ(cls)));
+// Pilotos pagantes (backing) trazem dinheiro de patrocinadores pessoais a cada corrida
+export const driverCost = driver => (driver.wage || 0) - (driver.backing || 0);
+export const driversPayroll = team => team.drivers.reduce((sum, driver) => sum + driverCost(driver), 0);
+export const driversBacking = team => team.drivers.reduce((sum, driver) => sum + (driver.backing || 0), 0);
 
 // Multa para dispensar um piloto: metade do salário restante da temporada
 export const releaseCost = (driver, racesLeft) => Math.floor((driver.wage || 0) * Math.max(1, racesLeft) * 0.5);
@@ -154,3 +157,12 @@ export const racePrize = (cls, classPos, finished, multiplier = 1) => {
 
 // Prêmio do campeonato (por posição final na classe)
 export const seasonPrize = (cls, position, classSize) => (classSize - position + 1) * SERIES_CONFIG[cls].seasonPrizeStep;
+
+// ---------------------------------------------------------------------------
+// Segundo carro
+// ---------------------------------------------------------------------------
+
+export const secondCarOperations = cls => SECOND_CAR[cls]?.operations ?? 0;
+export const secondCarAnnualBudget = cls => Math.floor(SERIES_CONFIG[cls].annualBudget * (SECOND_CAR[cls]?.annualShare ?? 0.5));
+export const secondCarStartBudget = cls => Math.floor(SERIES_CONFIG[cls].budget * (SECOND_CAR[cls]?.startShare ?? 0.5));
+export const secondCarEntryFee = cls => SECOND_CAR[cls]?.entryFee ?? 0;

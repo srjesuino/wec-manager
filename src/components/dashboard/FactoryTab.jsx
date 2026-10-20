@@ -46,6 +46,11 @@ const FactoryTab = ({ game, onUpgradeFacility, onHireStaff }) => {
   const player = game.playerTeam;
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      {game.sisterTeam && (
+        <p className="bg-blue-900/20 border border-blue-800/50 rounded-xl p-4 text-sm text-blue-100">
+          Instalações e equipe técnica atendem os dois carros (#{player.number} e #{game.sisterTeam.number}): cada ampliação ou contratação vale para os dois.
+        </p>
+      )}
       <section>
         <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-3">Instalações</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

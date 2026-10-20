@@ -389,7 +389,7 @@ export const MEDIA_BACKEND_URL = "https://wec-backend.jesuinodeoliveira97.worker
 // v4.0 — dados ampliados
 // ---------------------------------------------------------------------------
 
-export const GAME_VERSION = "4.0";
+export const GAME_VERSION = "4.1";
 export const SAVE_KEY = "wec_manager_autosave";
 export const SETTINGS_KEY = "wec_manager_settings";
 
@@ -767,3 +767,67 @@ export const PART_INFO = {
   crew: { label: "Pit Crew", desc: "Tempo de Box", color: "bg-orange-500" }
 };
 export const PART_LABELS = Object.fromEntries(Object.entries(PART_INFO).map(([key, info]) => [key, info.label]));
+
+// ---------------------------------------------------------------------------
+// v4.1 — equipe com dois carros
+// ---------------------------------------------------------------------------
+
+// Programas de corrida da equipe do jogador
+export const PROGRAMS = {
+  SINGLE: {
+    id: "SINGLE",
+    label: "Um carro",
+    description: "O desafio clássico: um carro, três pilotos e todo o orçamento concentrado nele."
+  },
+  SAME_CLASS: {
+    id: "SAME_CLASS",
+    label: "Dois carros na classe",
+    description: "Dois carros na mesma classe, como as equipes de fábrica. O P&D vale para os dois (custa 50% a mais) e você pode dar ordens de equipe."
+  },
+  DUAL_CLASS: {
+    id: "DUAL_CLASS",
+    label: "Programa duplo",
+    description: "Um Hypercar e um LMGT3 na mesma equipe. Dois campeonatos, dois carros para desenvolver e o dobro de pressão."
+  }
+};
+export const PROGRAM_ORDER = ["SINGLE", "SAME_CLASS", "DUAL_CLASS"];
+
+// Custos e receitas do segundo carro (valores da classe do segundo carro)
+// operations: logística e mecânicos extras por corrida; annualShare: fatia do orçamento anual da classe que a diretoria libera;
+// startShare: fatia do orçamento inicial da classe; entryFee: inscrição ao expandir no meio da carreira
+export const SECOND_CAR = {
+  HYPERCAR: { operations: 350000, annualShare: 0.55, startShare: 0.55, entryFee: 6000000 },
+  LMGT3: { operations: 120000, annualShare: 0.6, startShare: 0.6, entryFee: 2000000 }
+};
+// P&D compartilhado entre dois carros da mesma classe (peças para os dois)
+export const SHARED_DEV_MULT = 1.5;
+// Patrocinadores pagam mais por dois carros na pista (exposição)
+export const TWO_CAR_SPONSOR_BONUS = 0.15;
+
+// Ordens de equipe durante a corrida (só valem entre os seus carros da mesma classe)
+export const TEAM_ORDERS = {
+  FREE: { id: "FREE", label: "Disputa livre", description: "Os seus carros podem brigar entre si." },
+  HOLD: { id: "HOLD", label: "Manter posições", description: "Nada de disputa interna: quem está atrás segura a posição." }
+};
+
+// Conquistas da carreira
+export const ACHIEVEMENTS = [
+  { id: "first_points", icon: "Flag", title: "Primeiros pontos", description: "Marque pontos em uma corrida." },
+  { id: "first_podium", icon: "Medal", title: "Champanhe", description: "Suba ao pódio da classe." },
+  { id: "first_win", icon: "Trophy", title: "Primeira vitória", description: "Vença uma corrida na classe." },
+  { id: "pole", icon: "Crown", title: "Pole position", description: "Largue na pole da classe." },
+  { id: "lemans_win", icon: "Moon", title: "Rei de Sarthe", description: "Vença as 24 Horas de Le Mans." },
+  { id: "rain_win", icon: "CloudRain", title: "Dança na chuva", description: "Vença uma corrida com chuva." },
+  { id: "comeback", icon: "TrendingUp", title: "Remontada", description: "Ganhe 6 posições ou mais na classe em uma corrida." },
+  { id: "grand_slam", icon: "Zap", title: "Grand Slam", description: "Pole, vitória e volta mais rápida na mesma corrida." },
+  { id: "one_two", icon: "Users", title: "Dobradinha", description: "Termine em 1º e 2º na classe com os seus dois carros." },
+  { id: "double_win", icon: "Sparkles", title: "Dupla vitória", description: "Vença na Hypercar e na LMGT3 no mesmo dia." },
+  { id: "both_podium", icon: "Medal", title: "Dois no pódio", description: "Coloque os dois carros no pódio da classe na mesma corrida." },
+  { id: "survivor", icon: "ShieldCheck", title: "Sobrevivente", description: "Termine todas as corridas de uma temporada sem abandono." },
+  { id: "title", icon: "Trophy", title: "Campeão do mundo", description: "Conquiste um título mundial." },
+  { id: "double_title", icon: "Crown", title: "Coroa dupla", description: "Seja campeão nas duas classes na mesma temporada." },
+  { id: "promotion", icon: "ArrowUpCircle", title: "Subindo de nível", description: "Aceite o convite para a Hypercar." },
+  { id: "rich", icon: "Wallet", title: "Cofre cheio", description: "Tenha $100M em caixa." },
+  { id: "track_record", icon: "Timer", title: "Recordista", description: "Bata o recorde de volta de uma pista." },
+  { id: "veteran", icon: "Briefcase", title: "Veterano do paddock", description: "Complete 5 temporadas no comando." }
+];

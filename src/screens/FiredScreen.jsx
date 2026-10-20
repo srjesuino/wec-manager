@@ -13,7 +13,10 @@ const FiredScreen = ({ summary, onNewCareer }) => {
         <h1 className="text-4xl md:text-6xl font-black italic mt-2 mb-4">VOCÊ FOI DEMITIDO</h1>
         <p className="text-gray-300 mb-2">{summary.review.verdict}</p>
         <p className="text-gray-500 text-sm mb-8">
-          Meta da temporada {game.season}: {summary.review.objective?.text}. A {player.name} terminou em {summary.review.position}º.
+          Meta da temporada {game.season}: {summary.review.objective?.text}.{" "}
+          {summary.review.entries?.length > 1
+            ? `Os carros terminaram em ${summary.review.entries.map(entry => `${entry.position}º (#${entry.number})`).join(" e ")}.`
+            : `A ${player.name} terminou em ${summary.review.position}º.`}
         </p>
         <div className="grid grid-cols-3 gap-3 mb-10">
           {[

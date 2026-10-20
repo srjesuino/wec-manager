@@ -204,6 +204,15 @@ export const generateRookie = takenNames => {
   return driver;
 };
 
+// Piloto pagante ("gentleman driver"): rating modesto, mas traz patrocínio pessoal a cada corrida
+export const generatePayDriver = takenNames => {
+  const driver = generateDriver(52, 70, randInt(26, 36), takenNames);
+  driver.potential = driver.rating;
+  driver.contractYears = 0;
+  driver.backingBase = randInt(12, 40) * 10000;
+  return driver;
+};
+
 // Completa pilotos de saves antigos (só tinham rating) com atributos, nacionalidade etc.
 export const upgradeLegacyDriver = driver => {
   if (driver.attrs) {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Crown, Flag, Medal, Star, Target, Timer, TriangleAlert, TrendingUp } from "lucide-react";
+import { ArrowRight, Award, Crown, Flag, Medal, Sparkles, Star, Target, Timer, TriangleAlert, TrendingUp, User } from "lucide-react";
 import { TRACKS } from "../data/constants";
 import { formatLapTime, formatMoney, surname } from "../utils/helpers";
 import { TeamStripe } from "../components/ui/common";
@@ -31,9 +31,43 @@ const Podium = ({ title, results, accent }) => {
   );
 };
 
+const classLabel = cls => (cls === "HYPERCAR" ? "Hypercar" : "LMGT3");
+
+// Resultado de um carro no topo da tela (equipe com dois carros)
+const CarHero = ({ result }) => (
+  <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-center flex-1 min-w-[150px]">
+    <div className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+      #{result.number} · {classLabel(result.class)}
+    </div>
+    <div className="text-4xl md:text-5xl font-black italic mt-1">{result.finished ? `P${result.classPos}` : "DNF"}</div>
+    <div className="text-xs text-gray-400 font-bold">{result.finished ? `largou em P${result.startClassPosition}` : result.dnfReason}</div>
+    <div className="flex flex-wrap justify-center gap-1 mt-2">
+      <span className="px-2 py-0.5 rounded-full bg-yellow-500 text-black font-black text-xs">+{result.points} pts</span>
+      {result.pole && (
+        <span className="px-2 py-0.5 rounded-full bg-purple-600 font-black text-xs flex items-center gap-1">
+          <Crown size={11} /> Pole
+        </span>
+      )}
+      {result.fastestLap && (
+        <span className="px-2 py-0.5 rounded-full bg-purple-900 text-purple-200 font-black text-xs flex items-center gap-1">
+          <Timer size={11} /> VMR
+        </span>
+      )}
+    </div>
+  </div>
+);
+
 const RaceResultsScreen = ({ game, report, summary, onContinue }) => {
   const [view, setView] = useState(report.player.class);
-  const mine = report.player;
+  const players = report.players?.length ? report.players : [report.player];
+  const twoCars = players.length > 1;
+  const [carIdx, setCarIdx] = useState(0);
+  const mine = players[carIdx] || report.player;
+  const lead = report.player;
+  const records = summary.records || [];
+  const achievements = summary.achievements || [];
+  const pointsTotals = summary.pointsTotals || [{ id: lead.teamId, number: lead.number, class: lead.class, points: summary.pointsTotal }];
+  const dotd = report.driverOfTheDay;
   const rows = report.classes[view];
   const isLastRace = game.raceIndex >= TRACKS.length;
   const gainers = Object.values(report.classes)
@@ -53,24 +87,63 @@ const RaceResultsScreen = ({ game, report, summary, onContinue }) => {
           <p className="text-xs font-bold text-blue-400 uppercase tracking-widest">
             {report.track.name} · Resultado final · {report.track.durationHours}h de prova
           </p>
-          <h1 className="text-5xl md:text-7xl font-black italic mt-2">{mine.finished ? `P${mine.classPos}` : "DNF"}</h1>
-          <p className="text-gray-400 font-bold">
-            {mine.finished ? `na classe ${mine.class === "HYPERCAR" ? "Hypercar" : "LMGT3"} · largou em P${mine.startClassPosition}` : mine.dnfReason}
-          </p>
-          <div className="flex flex-wrap justify-center gap-2 mt-3">
-            <span className="px-3 py-1 rounded-full bg-yellow-500 text-black font-black text-sm">+{mine.points} pontos</span>
-            {mine.pole && (
-              <span className="px-3 py-1 rounded-full bg-purple-600 font-black text-sm flex items-center gap-1">
-                <Crown size={14} /> Pole
-              </span>
-            )}
-            {mine.fastestLap && (
-              <span className="px-3 py-1 rounded-full bg-purple-900 text-purple-200 font-black text-sm flex items-center gap-1">
-                <Timer size={14} /> Volta mais rápida
-              </span>
-            )}
-          </div>
+          {twoCars ? (
+            <div className="flex flex-wrap justify-center gap-3 mt-3 max-w-2xl mx-auto">
+              {players.map(result => (
+                <CarHero result={result} key={result.teamId} />
+              ))}
+            </div>
+          ) : (
+            <>
+              <h1 className="text-5xl md:text-7xl font-black italic mt-2">{lead.finished ? `P${lead.classPos}` : "DNF"}</h1>
+              <p className="text-gray-400 font-bold">
+                {lead.finished ? `na classe ${classLabel(lead.class)} · largou em P${lead.startClassPosition}` : lead.dnfReason}
+              </p>
+              <div className="flex flex-wrap justify-center gap-2 mt-3">
+                <span className="px-3 py-1 rounded-full bg-yellow-500 text-black font-black text-sm">+{lead.points} pontos</span>
+                {lead.pole && (
+                  <span className="px-3 py-1 rounded-full bg-purple-600 font-black text-sm flex items-center gap-1">
+                    <Crown size={14} /> Pole
+                  </span>
+                )}
+                {lead.fastestLap && (
+                  <span className="px-3 py-1 rounded-full bg-purple-900 text-purple-200 font-black text-sm flex items-center gap-1">
+                    <Timer size={14} /> Volta mais rápida
+                  </span>
+                )}
+              </div>
+            </>
+          )}
         </div>
+
+        {(achievements.length > 0 || records.length > 0) && (
+          <div className="bg-gradient-to-r from-yellow-600/20 via-yellow-500/10 to-yellow-600/20 border border-yellow-500/50 rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 gap-3 animate-in zoom-in-95 duration-500">
+            {achievements.map(item => (
+              <div className="flex items-start gap-3" key={item.id || item.title}>
+                <Award size={22} className="text-yellow-400 shrink-0" />
+                <div>
+                  <div className="text-[10px] font-black uppercase text-yellow-300 tracking-widest">Conquista desbloqueada</div>
+                  <div className="font-black text-white">{item.title}</div>
+                  <div className="text-xs text-gray-300">{item.description}</div>
+                </div>
+              </div>
+            ))}
+            {records.map(record => (
+              <div className="flex items-start gap-3" key={record.cls}>
+                <Sparkles size={22} className="text-purple-300 shrink-0" />
+                <div>
+                  <div className="text-[10px] font-black uppercase text-purple-300 tracking-widest">Novo recorde da pista · {classLabel(record.cls)}</div>
+                  <div className={`font-black ${record.isPlayer ? "text-blue-300" : "text-white"}`}>
+                    {record.teamName} — {formatLapTime(record.time)}
+                  </div>
+                  <div className="text-xs text-gray-300">
+                    {surname(record.driver || "")} · recorde anterior {formatLapTime(record.previous)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Podium title="Pódio Hypercar" results={report.classes.HYPERCAR} accent="text-red-400" />
@@ -79,9 +152,24 @@ const RaceResultsScreen = ({ game, report, summary, onContinue }) => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
-            <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-              <Flag size={14} className="text-blue-400" /> Sua corrida
-            </h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                <Flag size={14} className="text-blue-400" /> Sua corrida
+              </h3>
+              {twoCars && (
+                <div className="flex bg-gray-950 rounded-lg p-0.5 border border-gray-800">
+                  {players.map((result, i) => (
+                    <button
+                      key={result.teamId}
+                      onClick={() => setCarIdx(i)}
+                      className={`px-2 py-0.5 text-[10px] font-black rounded ${carIdx === i ? "bg-blue-600 text-white" : "text-gray-400"}`}
+                    >
+                      #{result.number}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-3 gap-2 text-center">
               {[
                 ["Pit stops", mine.pitStops],
@@ -194,6 +282,14 @@ const RaceResultsScreen = ({ game, report, summary, onContinue }) => {
                 <TriangleAlert size={14} className="text-yellow-400 mt-0.5 shrink-0" /> Houve Safety Car na prova.
               </p>
             )}
+            {dotd && (
+              <p className="flex items-start gap-2">
+                <User size={14} className="text-blue-400 mt-0.5 shrink-0" />
+                <span>
+                  Piloto do dia: <span className={`font-bold ${dotd.isPlayer ? "text-blue-300" : ""}`}>{dotd.driver}</span> ({dotd.teamName}, {dotd.reason})
+                </span>
+              </p>
+            )}
             {dnfs.length > 0 && (
               <p className="flex items-start gap-2">
                 <TriangleAlert size={14} className="text-red-400 mt-0.5 shrink-0" />
@@ -201,7 +297,11 @@ const RaceResultsScreen = ({ game, report, summary, onContinue }) => {
               </p>
             )}
             <p className="flex items-start gap-2">
-              <Medal size={14} className="text-yellow-400 mt-0.5 shrink-0" /> Pontos no campeonato: {summary.pointsTotal}
+              <Medal size={14} className="text-yellow-400 mt-0.5 shrink-0" />
+              <span>
+                Pontos no campeonato:{" "}
+                {twoCars ? pointsTotals.map(item => `#${item.number} (${item.class === "HYPERCAR" ? "HYP" : "GT3"}) ${item.points}`).join(" · ") : summary.pointsTotal}
+              </span>
             </p>
           </div>
         </div>

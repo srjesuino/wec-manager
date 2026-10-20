@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Trophy
 } from "lucide-react";
+import { isPlayerId } from "../../engine/team";
 
 const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
   const [selectedYear, setSelectedYear] = useState(currentSeason);
@@ -84,12 +85,19 @@ const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
     () => [...careerStats].sort((a, b) => b[rankingSort] - a[rankingSort]),
     [careerStats, rankingSort]
   );
-  const playerCareer = careerStats.find(season => season.id === "player") || {
-    name: "Player",
-    wins: 0,
-    podiums: 0,
-    titles: 0
-  };
+  // Carros do jogador na classe filtrada (com dois carros na mesma classe, soma os dois)
+  const playerCareer = careerStats
+    .filter(item => isPlayerId(item.id))
+    .reduce(
+      (total, item) => ({
+        name: total.name || item.name,
+        wins: total.wins + item.wins,
+        podiums: total.podiums + item.podiums,
+        titles: total.titles + item.titles
+      }),
+      { name: null, wins: 0, podiums: 0, titles: 0 }
+    );
+  playerCareer.name ||= "Player";
   if (filteredSeason) {
     return (
       <div className="fixed inset-0 bg-gray-950/95 z-50 overflow-y-auto flex items-start md:items-center justify-center p-0 md:p-4">
@@ -183,12 +191,12 @@ const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
                       <tbody>
                         {filteredSeason.standings.map((item, index) => (
                           <tr
-                            className={`border-b border-gray-800 hover:bg-gray-800/50 ${item.id === "player" ? "bg-blue-900/10" : ""}`}
+                            className={`border-b border-gray-800 hover:bg-gray-800/50 ${isPlayerId(item.id) ? "bg-blue-900/10" : ""}`}
                             key={index}
                           >
                             <td className="p-3 font-mono text-gray-400 text-sm">{index + 1}</td>
                             <td
-                              className={`p-3 font-bold text-sm ${item.id === "player" ? "text-blue-400" : "text-gray-200"}`}
+                              className={`p-3 font-bold text-sm ${isPlayerId(item.id) ? "text-blue-400" : "text-gray-200"}`}
                             >
                               {item.name}
                             </td>
@@ -374,17 +382,17 @@ const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
                         <tbody>
                           {sortedRanking.slice(0, 10).map((item, index) => (
                             <tr
-                              className={`border-b border-gray-800 ${item.id === "player" ? "bg-blue-900/20" : "hover:bg-gray-800/30"}`}
+                              className={`border-b border-gray-800 ${isPlayerId(item.id) ? "bg-blue-900/20" : "hover:bg-gray-800/30"}`}
                               key={item.id}
                             >
                               <td className="p-3 text-center font-mono font-bold text-gray-500">
                                 {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : index + 1}
                               </td>
                               <td
-                                className={`p-3 font-bold text-sm ${item.id === "player" ? "text-blue-400" : "text-gray-200"}`}
+                                className={`p-3 font-bold text-sm ${isPlayerId(item.id) ? "text-blue-400" : "text-gray-200"}`}
                               >
                                 {item.name}
-                                {item.id === "player" && (
+                                {isPlayerId(item.id) && (
                                   <span className="ml-2 text-[10px] bg-blue-900 text-blue-200 px-1 rounded">
                                     VOCÊ
                                   </span>

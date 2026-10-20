@@ -1,7 +1,9 @@
-import { ArrowRight, CloudRain, CloudSun, Gauge, Headphones, Moon, Scale, Sun, Target, Trophy } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, CloudRain, CloudSun, Gauge, Headphones, Moon, Scale, Sun, Target, Timer, Trophy } from "lucide-react";
 import { TRACKS, TRACK_TYPE_LABELS, WEATHER_SCENARIOS } from "../data/constants";
-import { formatClock } from "../utils/helpers";
-import { classStandings, playerStanding } from "../engine/career";
+import { formatClock, formatLapTime } from "../utils/helpers";
+import { classStandings, playerStanding, objectiveFor } from "../engine/career";
+import { isPlayerId, playerEntries } from "../engine/team";
 import { bopWeight, classTeams } from "../engine/weekend";
 import { TrackOutline } from "../components/TrackMap";
 import { TeamStripe, CountryCode } from "../components/ui/common";
@@ -22,9 +24,15 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
   const player = game.playerTeam;
   const engineer = player.staff?.raceEngineer?.stars ?? 2;
   const rain = Math.round(weekend.forecastRain * 100);
-  const standings = classStandings(game, player.class);
-  const rivals = classTeams(game, player.class).sort((a, b) => (a.bop || 0) - (b.bop || 0));
-  const objective = game.career.objective;
+  const entries = playerEntries(game);
+  const twoCars = entries.length > 1;
+  const playerClasses = [...new Set(entries.map(entry => entry.class))];
+  const [bopClass, setBopClass] = useState(player.class);
+  const standings = classStandings(game, bopClass);
+  const rivals = classTeams(game, bopClass).sort((a, b) => (a.bop || 0) - (b.bop || 0));
+  const seasonStarted = (game.archive.currentSeasonRaces || []).length > 0;
+  const records = game.archive?.trackRecords?.[track.id] || {};
+  const setupBonus = game.weekendBonus?.setup;
   const sponsorGoals = player.sponsors.filter(contract => contract.goalPosition && (contract.type === "PERFORMANCE" || (contract.type === "LEMANS" && track.id === "lemans")));
   const WeatherIcon = rain >= 50 ? CloudRain : rain >= 20 ? CloudSun : Sun;
   return (
@@ -72,6 +80,14 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
               ))}
               <div className="col-span-2 text-xs text-gray-400">
                 Destaque: <span className="text-white font-bold">{track.keyFeature}</span>. Curvas-chave: {track.corners.join(", ")}.
+                {["HYPERCAR", "LMGT3"].map(cls =>
+                  records[cls] ? (
+                    <span className="flex items-center gap-1 text-purple-300 mt-1" key={cls}>
+                      <Timer size={12} /> Recorde da pista {cls === "HYPERCAR" ? "HYP" : "GT3"}: <span className="font-mono font-bold">{formatLapTime(records[cls].time)}</span> ·{" "}
+                      {records[cls].teamName} ({records[cls].driver}, {records[cls].season})
+                    </span>
+                  ) : null
+                )}
                 {hasNightRacing(track) && (
                   <span className="flex items-center gap-1 text-indigo-300 font-bold mt-1">
                     <Moon size={12} /> Parte da prova será à noite: ritmo um pouco menor e mais erros.
@@ -112,16 +128,32 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
               <Target size={16} className="text-green-400" /> Metas
             </h3>
             <ul className="space-y-2 text-sm">
-              <li className="flex items-start gap-2">
-                <Trophy size={14} className="text-yellow-400 mt-0.5 shrink-0" />
-                <span>
-                  Diretoria: {objective?.text}.{(game.archive.currentSeasonRaces || []).length > 0 ? ` Agora: ${playerStanding(game)}º.` : ""}
-                </span>
-              </li>
+              {entries.map(entry => {
+                const objective = objectiveFor(game, entry);
+                return (
+                  <li className="flex items-start gap-2" key={entry.id}>
+                    <Trophy size={14} className="text-yellow-400 mt-0.5 shrink-0" />
+                    <span>
+                      Diretoria{twoCars ? ` (#${entry.number} ${entry.class === "HYPERCAR" ? "HYP" : "GT3"})` : ""}: {objective?.text}.
+                      {seasonStarted ? ` Agora: ${playerStanding(game, entry)}º.` : ""}
+                    </span>
+                  </li>
+                );
+              })}
               <li className="flex items-start gap-2">
                 <Gauge size={14} className="text-blue-400 mt-0.5 shrink-0" />
-                <span>Terminar até P{objective?.position} na classe aumenta a confiança da diretoria.</span>
+                <span>
+                  {twoCars
+                    ? `Terminar até ${entries.map(entry => `P${objectiveFor(game, entry)?.position} (#${entry.number})`).join(" e ")} na classe aumenta a confiança da diretoria.`
+                    : `Terminar até P${objectiveFor(game, player)?.position} na classe aumenta a confiança da diretoria.`}
+                </span>
               </li>
+              {setupBonus ? (
+                <li className="flex items-start gap-2">
+                  <Gauge size={14} className="text-green-400 mt-0.5 shrink-0" />
+                  <span className="text-green-300 font-bold">Teste privado: setup +{setupBonus}.</span>
+                </li>
+              ) : null}
               {sponsorGoals.map(contract => (
                 <li className="flex items-start gap-2" key={contract.id}>
                   <Target size={14} className="text-red-400 mt-0.5 shrink-0" />
@@ -135,18 +167,33 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
           </div>
 
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-            <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 mb-3">
-              <Scale size={16} className="text-green-400" /> BoP da classe
-            </h3>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                <Scale size={16} className="text-green-400" /> BoP da classe
+              </h3>
+              {playerClasses.length > 1 && (
+                <div className="flex bg-gray-950 rounded-lg p-0.5 border border-gray-800">
+                  {["HYPERCAR", "LMGT3"].map(cls => (
+                    <button
+                      key={cls}
+                      onClick={() => setBopClass(cls)}
+                      className={`px-2 py-0.5 text-[10px] font-bold rounded ${bopClass === cls ? (cls === "HYPERCAR" ? "bg-red-600 text-white" : "bg-yellow-600 text-black") : "text-gray-400"}`}
+                    >
+                      {cls === "HYPERCAR" ? "HYP" : "GT3"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {game.career.bopEnabled === false ? (
               <p className="text-sm text-gray-400">BoP desligado nesta carreira.</p>
             ) : (
               <div className="space-y-1 max-h-56 overflow-y-auto custom-scrollbar pr-1">
                 {rivals.map(team => (
-                  <div className={`flex items-center justify-between text-xs px-2 py-1 rounded ${team.id === player.id ? "bg-blue-900/30" : ""}`} key={team.id}>
+                  <div className={`flex items-center justify-between text-xs px-2 py-1 rounded ${isPlayerId(team.id) ? "bg-blue-900/30" : ""}`} key={team.id}>
                     <span className="flex items-center gap-2 min-w-0">
                       <TeamStripe color={team.color} />
-                      <span className={`truncate font-bold ${team.id === player.id ? "text-blue-300" : "text-gray-300"}`}>{team.name}</span>
+                      <span className={`truncate font-bold ${isPlayerId(team.id) ? "text-blue-300" : "text-gray-300"}`}>{team.name}</span>
                       <span className="text-gray-600">{standings.findIndex(item => item.id === team.id) + 1}º</span>
                     </span>
                     <span className={`font-mono font-bold ${(team.bop || 0) > 0 ? "text-green-400" : (team.bop || 0) < 0 ? "text-red-400" : "text-gray-500"}`}>

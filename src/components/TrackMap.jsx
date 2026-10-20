@@ -8,7 +8,7 @@ export const TrackOutline = ({ track, className = "w-full h-full", color = "#3b8
   </svg>
 );
 
-const TrackMap = ({ track, cars, viewClass = "ALL", night = 0, neutral = null, playerColor = "#3b82f6" }) => {
+const TrackMap = ({ track, cars, viewClass = "ALL", night = 0, neutral = null, playerColor = "#3b82f6", selectedId = null }) => {
   const pathRef = useRef(null);
   const [dots, setDots] = useState([]);
   const [startPoint, setStartPoint] = useState(null);
@@ -16,6 +16,7 @@ const TrackMap = ({ track, cars, viewClass = "ALL", night = 0, neutral = null, p
     if (pathRef.current) {
       try {
         const totalLength = pathRef.current.getTotalLength();
+        const multi = cars.filter(car => car.isPlayer).length > 1;
         setStartPoint(pathRef.current.getPointAtLength(0));
         const positions = cars
           .map(car => {
@@ -45,6 +46,8 @@ const TrackMap = ({ track, cars, viewClass = "ALL", night = 0, neutral = null, p
               color,
               stroke: car.isPlayer ? "white" : "none",
               isPlayer: car.isPlayer,
+              label: car.isPlayer ? (multi ? `#${car.number}` : "VOCÊ") : "LÍDER",
+              selected: car.isPlayer && (!multi || !selectedId || car.teamId === selectedId),
               isLeader: car.classPosition === 1,
               teamName: car.teamName,
               class: car.class
@@ -57,7 +60,7 @@ const TrackMap = ({ track, cars, viewClass = "ALL", night = 0, neutral = null, p
         console.error("Erro ao calcular posições no mapa", error);
       }
     }
-  }, [cars, track, viewClass, playerColor]);
+  }, [cars, track, viewClass, playerColor, selectedId]);
   const trackColor = neutral === "SC" ? "#ca8a04" : neutral === "FCY" ? "#a16207" : "#374151";
   return (
     <div className="w-full h-full flex items-center justify-center relative">
@@ -91,7 +94,7 @@ const TrackMap = ({ track, cars, viewClass = "ALL", night = 0, neutral = null, p
             }}
             key={dot.id}
           >
-            {dot.isPlayer && <circle r="12" fill="none" stroke={dot.color} strokeWidth="1" className="animate-ping" opacity="0.6" />}
+            {dot.isPlayer && dot.selected && <circle r="12" fill="none" stroke={dot.color} strokeWidth="1" className="animate-ping" opacity="0.6" />}
             {night > 0.4 && <circle r={dot.isPlayer ? 8 : 5} fill="#fef9c3" opacity={0.25 * night} />}
             <circle
               r={dot.isPlayer ? 5 : dot.class === "HYPERCAR" ? 3.5 : 2.5}
@@ -104,7 +107,7 @@ const TrackMap = ({ track, cars, viewClass = "ALL", night = 0, neutral = null, p
               <g transform="translate(0, -10)">
                 <rect x="-20" y="-12" width="40" height="12" rx="2" fill="rgba(0,0,0,0.8)" />
                 <text x="0" y="-3" textAnchor="middle" fontSize="7" fill="white" fontWeight="bold">
-                  {dot.isPlayer ? "VOCÊ" : "LÍDER"}
+                  {dot.label}
                 </text>
               </g>
             )}

@@ -490,7 +490,8 @@ const interact = (s, car, speed, ctx) => {
   const ahead = info.ahead;
   const aheadSpeed = ahead.speed > 1 ? ahead.speed : ahead.pace;
   if (car.class === "HYPERCAR" && ahead.cls === "LMGT3") {
-    return speed * 0.975;
+    // O seu próprio GT3 abre caminho para o seu Hypercar
+    return speed * (car.isPlayer && ahead.isPlayer ? 0.992 : 0.975);
   }
   if (car.class !== ahead.cls) {
     return speed;
@@ -501,6 +502,11 @@ const interact = (s, car, speed, ctx) => {
   }
   if (speed <= aheadSpeed) {
     return speed;
+  }
+  // Ordens de equipe: os seus carros não disputam posição entre si
+  if (car.isPlayer && ahead.isPlayer && s.teamOrders === "HOLD") {
+    car.heldUp = true;
+    return Math.min(speed, aheadSpeed);
   }
   const myDriver = driverPaceRating(car.drivers[car.currentDriverIdx], s.trackWetness);
   const delta = (speed - aheadSpeed) / aheadSpeed;
@@ -732,14 +738,15 @@ const updateRunningCar = (s, car, ctx) => {
   car.damageTaken = car.damage > damageBefore ? car.damage - damageBefore : 0;
 };
 
-const playerRadio = (s, car) => {
+const playerRadio = (s, car, multi = false) => {
   const say = (key, text, tone, cooldown = 180) => {
-    const last = s.radioMemo[key];
+    const memoKey = `${car.teamId}:${key}`;
+    const last = s.radioMemo[memoKey];
     if (last != null && s.elapsed - last < cooldown) {
       return;
     }
-    s.radioMemo[key] = s.elapsed;
-    s.radio.push({ t: s.elapsed, lap: Math.min(s.totalLaps, car.laps + 1), text, tone });
+    s.radioMemo[memoKey] = s.elapsed;
+    s.radio.push({ t: s.elapsed, lap: Math.min(s.totalLaps, car.laps + 1), text: multi ? `#${car.number}: ${text}` : text, tone, teamId: car.teamId });
     if (s.radio.length > MAX_RADIO) {
       s.radio.shift();
     }
@@ -811,6 +818,33 @@ const playerRadio = (s, car) => {
   }
 };
 
+// Rádio do muro quando os dois carros da equipe andam juntos na mesma classe
+const teamRadio = (s, players) => {
+  if (players.length < 2 || players[0].class !== players[1].class) {
+    return;
+  }
+  const [a, b] = players;
+  if (a.status !== "RUN" || b.status !== "RUN" || a.finished || b.finished) {
+    return;
+  }
+  const close = Math.abs(a.distance - b.distance) < 60 && a.laps === b.laps;
+  const key = "team:battle";
+  const last = s.radioMemo[key];
+  if (close && s.teamOrders !== "HOLD" && (last == null || s.elapsed - last > 400) && s.elapsed > 120) {
+    s.radioMemo[key] = s.elapsed;
+    s.radio.push({
+      t: s.elapsed,
+      lap: Math.min(s.totalLaps, Math.max(a.laps, b.laps) + 1),
+      text: `Muro: #${a.number} e #${b.number} estão brigando roda a roda! Quer dar ordem de equipe?`,
+      tone: "warn",
+      teamId: null
+    });
+    if (s.radio.length > MAX_RADIO) {
+      s.radio.shift();
+    }
+  }
+};
+
 // Avança 1 segundo de corrida (muta o estado recebido, que deve ser uma cópia)
 const tick = s => {
   if (s.finished) {
@@ -844,6 +878,7 @@ const tick = s => {
     speed: car.speed / 3.6,
     pace: car.pace,
     cls: car.class,
+    isPlayer: car.isPlayer,
     strategy: car.strategy,
     driverPace: driverPaceRating(car.drivers[car.currentDriverIdx], s.trackWetness)
   }));
@@ -915,10 +950,9 @@ const tick = s => {
   s.grid = rankGrid(s.grid);
   assignPositions(s.grid);
 
-  const player = s.grid.find(car => car.isPlayer);
-  if (player) {
-    playerRadio(s, player);
-  }
+  const players = s.grid.filter(car => car.isPlayer);
+  players.forEach(car => playerRadio(s, car, players.length > 1));
+  teamRadio(s, players);
 
   if (s.checkered && s.grid.every(car => car.status === "DNF" || car.finished)) {
     s.finished = true;
@@ -971,20 +1005,80 @@ export const simulateToEnd = state => {
 // Comandos do jogador durante a corrida
 // ---------------------------------------------------------------------------
 
-const updatePlayer = (state, update) => ({
-  ...state,
-  grid: state.grid.map(car => (car.isPlayer ? { ...car, ...update(car) } : car))
-});
+// teamId escolhe qual dos carros do jogador recebe o comando (padrão: o primeiro)
+const updatePlayer = (state, update, teamId = null) => {
+  const target = teamId ?? state.grid.find(car => car.isPlayer)?.teamId;
+  return {
+    ...state,
+    grid: state.grid.map(car => (car.isPlayer && car.teamId === target ? { ...car, ...update(car) } : car))
+  };
+};
 
-export const requestPitStop = (state, plan) =>
-  updatePlayer(state, car => (car.status === "RUN" && !car.finished ? { boxRequested: true, pitPlan: { ...plan } } : {}));
+export const requestPitStop = (state, plan, teamId) =>
+  updatePlayer(state, car => (car.status === "RUN" && !car.finished ? { boxRequested: true, pitPlan: { ...plan } } : {}), teamId);
 
-export const cancelPitStop = state => updatePlayer(state, car => (car.forcedPit ? {} : { boxRequested: false, pitPlan: null }));
+export const cancelPitStop = (state, teamId) => updatePlayer(state, car => (car.forcedPit ? {} : { boxRequested: false, pitPlan: null }), teamId);
 
-export const setPlayerStrategy = (state, strategy) => updatePlayer(state, () => ({ strategy }));
+export const setPlayerStrategy = (state, strategy, teamId) => updatePlayer(state, () => ({ strategy }), teamId);
 
-export const setPlayerAutoStrategy = (state, enabled) =>
-  updatePlayer(state, car => ({
-    autoStrategy: enabled,
-    ...(enabled ? {} : car.forcedPit ? {} : { boxRequested: false, pitPlan: null })
-  }));
+export const setPlayerAutoStrategy = (state, enabled, teamId) =>
+  updatePlayer(
+    state,
+    car => ({
+      autoStrategy: enabled,
+      ...(enabled ? {} : car.forcedPit ? {} : { boxRequested: false, pitPlan: null })
+    }),
+    teamId
+  );
+
+export const setTeamOrders = (state, orders) => {
+  const players = state.grid.filter(car => car.isPlayer);
+  const text =
+    orders === "HOLD"
+      ? `Ordem de equipe: ${players.map(car => `#${car.number}`).join(" e ")} mantêm as posições.`
+      : "Ordem de equipe retirada: disputa livre entre os carros da equipe.";
+  return {
+    ...state,
+    teamOrders: orders,
+    radio: [...state.radio, { t: state.elapsed, lap: state.leaderLap, text: `Muro: ${text}`, tone: "info", teamId: null }].slice(-MAX_RADIO)
+  };
+};
+
+// Ordem de equipe pontual: o carro de trás passa o da frente (se estiverem perto, na mesma volta e classe)
+export const canSwapTeamCars = state => {
+  const players = state.grid.filter(car => car.isPlayer);
+  if (players.length < 2) {
+    return false;
+  }
+  const [a, b] = players;
+  return (
+    a.class === b.class &&
+    a.status === "RUN" &&
+    b.status === "RUN" &&
+    !a.finished &&
+    !b.finished &&
+    a.laps === b.laps &&
+    Math.abs(a.distance - b.distance) < 150
+  );
+};
+
+export const swapTeamCars = state => {
+  if (!canSwapTeamCars(state)) {
+    return state;
+  }
+  const s = cloneRaceState(state);
+  const [front, back] = s.grid.filter(car => car.isPlayer).sort((a, b) => b.distance - a.distance);
+  const frontDistance = front.distance;
+  front.distance = back.distance - 3;
+  back.distance = frontDistance;
+  front.lapProgressPct = (((front.distance % s.track.length) + s.track.length) % s.track.length) / s.track.length;
+  back.lapProgressPct = (((back.distance % s.track.length) + s.track.length) % s.track.length) / s.track.length;
+  s.grid = rankGrid(s.grid);
+  assignPositions(s.grid);
+  pushEvent(s, `🔁 Ordem de equipe: #${front.number} abre passagem para #${back.number}.`, "overtake", { teamId: back.teamId, important: true });
+  s.radio.push({ t: s.elapsed, lap: s.leaderLap, text: `Muro: #${front.number}, deixe o #${back.number} passar. Obrigado!`, tone: "info", teamId: null });
+  if (s.radio.length > MAX_RADIO) {
+    s.radio.shift();
+  }
+  return s;
+};

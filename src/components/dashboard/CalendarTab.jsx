@@ -14,7 +14,8 @@ const CalendarTab = ({ game }) => {
         const result = races[index];
         const done = index < game.raceIndex;
         const next = index === game.raceIndex;
-        const mine = result?.player;
+        const mine = result ? (result.players?.length ? result.players : result.player ? [result.player] : []) : [];
+        const twoCars = mine.length > 1;
         return (
           <div
             className={`flex flex-col md:flex-row md:items-center gap-3 md:gap-5 p-4 rounded-xl border transition-colors ${
@@ -57,10 +58,13 @@ const CalendarTab = ({ game }) => {
                   <span className="text-gray-400">
                     <span className="text-yellow-400 font-bold">GT3</span> {result.gt3Winner}
                   </span>
-                  {mine && (
-                    <span className={`font-bold ${!mine.finished ? "text-red-400" : mine.classPos <= 3 ? "text-green-400" : "text-blue-300"}`}>
-                      Você: {mine.finished ? `P${mine.classPos}` : "DNF"} ({mine.points} pts)
+                  {mine.map((car, i) => (
+                    <span className={`font-bold ${!car.finished ? "text-red-400" : car.classPos <= 3 ? "text-green-400" : "text-blue-300"}`} key={car.teamId || i}>
+                      {twoCars ? `#${car.number}` : "Você"}: {car.finished ? `P${car.classPos}` : "DNF"} ({car.points} pts)
                     </span>
+                  ))}
+                  {result.driverOfTheDay && (
+                    <span className="text-[11px] text-gray-500">Piloto do dia: {result.driverOfTheDay.driver}</span>
                   )}
                 </div>
               ) : next ? (
