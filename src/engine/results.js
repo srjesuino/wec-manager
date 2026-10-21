@@ -13,15 +13,17 @@ import {
 } from "./economy.js";
 import { developAiTeams, aiRaceSupport } from "./ai.js";
 import { reputationDelta, confidenceRaceDelta, classWeight } from "./career.js";
-import { PLAYER_ID, isPerCar, mainClass, playerEntries, sponsorExposure } from "./team.js";
+import { PLAYER_ID, teamScoring, mainClass, playerEntries, sponsorExposure } from "./team.js";
 
 export const racePoints = (classPos, multiplier = 1) =>
   classPos <= POINTS_TABLE.length ? Math.ceil(POINTS_TABLE[classPos - 1] * multiplier) : 0;
 
 // Resultado das equipes numa classe a partir do resultado dos carros (regra da temporada, ver teamScoring)
-// COMBINED: os pontos dos carros da equipe se somam. PER_CAR: cada carro é uma linha própria.
+// BEST_CAR: só o carro mais bem colocado pontua, com os pontos da sua posição real na classe (o segundo carro
+// não soma, mas a posição dele não é repassada a ninguém). COMBINED: os carros somam. PER_CAR: cada carro é uma linha.
 export const teamRaceResults = (carResults, cls, multiplier = 1, season = null) => {
-  if (season != null && isPerCar(cls, season)) {
+  const scoring = teamScoring(cls, season ?? Infinity);
+  if (scoring === "PER_CAR") {
     return carResults.map((car, index) => ({
       teamId: car.teamId,
       entryId: car.entryId,
@@ -49,7 +51,8 @@ export const teamRaceResults = (carResults, cls, multiplier = 1, season = null) 
     groups.get(result.teamId).push(result);
   });
   const rows = [...groups.values()].map(cars => {
-    const best = cars.find(car => car.finished) || cars[0];
+    // O melhor carro: a menor posição na classe (quem abandonou já fica atrás de quem terminou)
+    const best = cars.reduce((top, car) => (car.classPos < top.classPos ? car : top), cars[0]);
     return {
       teamId: best.teamId,
       teamName: best.teamName,
@@ -60,7 +63,8 @@ export const teamRaceResults = (carResults, cls, multiplier = 1, season = null) 
       finished: cars.some(car => car.finished),
       pole: cars.some(car => car.pole),
       bestClassPos: best.classPos,
-      carPoints: cars.reduce((sum, car) => sum + car.points, 0),
+      carPoints: scoring === "BEST_CAR" ? best.points : cars.reduce((sum, car) => sum + car.points, 0),
+      scoredBy: scoring === "BEST_CAR" && cars.length > 1 ? best.number : null,
       win: cars.some(car => car.finished && car.classPos === 1),
       podium: cars.some(car => car.finished && car.classPos <= 3),
       perCar: false
@@ -256,7 +260,8 @@ export const applyRaceResults = (game, report) => {
   // Melhor linha da equipe em cada classe (na regra PER_CAR, o melhor carro)
   const teamResultsOf = teamId =>
     Object.fromEntries(CLASSES.map(cls => [cls, report.teams[cls].find(row => row.teamId === teamId)]).filter(([, row]) => row));
-  // Para os programas, os carros de uma equipe sempre somam (nas classes PER_CAR, a tabela usa os carros)
+  // Pontos do programa: as linhas da equipe somadas (uma só linha em BEST_CAR e COMBINED; nas classes PER_CAR
+  // a tabela usa os carros e o programa guarda o total da equipe)
   const programResultsOf = teamId =>
     Object.fromEntries(
       CLASSES.map(cls => {

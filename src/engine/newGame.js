@@ -371,8 +371,8 @@ const from41 = old => {
       programs[cls] = { ...newProgram({ ...source.car }), devTokens: source.devTokens ?? null, points: 0, stats: statsOf() };
     }
     const program = programs[cls];
-    // Pontos de equipe: soma dos carros
-    program.points += source.points || 0;
+    // Pontos de equipe: o melhor carro na Hypercar, a soma dos carros na LMGT3
+    program.points = CLASS_RULES[cls].teamScoring === "BEST_CAR" ? Math.max(program.points, source.points || 0) : program.points + (source.points || 0);
     ["wins", "podiums", "poles"].forEach(key => {
       program.stats[key] = Math.max(program.stats[key], statsOf(source)[key]);
     });

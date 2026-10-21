@@ -68,7 +68,7 @@ const SECTIONS = [
     icon: Car,
     items: [
       "Como no WEC real: na Hypercar uma equipe inscreve 1 ou 2 carros; na LMGT3 a equipe corre sempre com 2 carros. A IA segue a mesma regra, e a sua equipe pode ter programa nas duas classes ao mesmo tempo.",
-      "Campeonato de equipes na Hypercar: os pontos dos carros da equipe se somam (como no de fabricantes). Uma equipe de um carro pontua só com ele.",
+      "Campeonato de equipes na Hypercar: só o carro mais bem colocado da equipe pontua. O segundo carro não soma, mas ocupa a posição e tira pontos dos rivais (a ordem não é refeita entre as equipes).",
       "Campeonato de equipes na LMGT3: até 2026 cada carro é uma inscrição separada na tabela; a partir de 2027 os pontos dos dois carros se somam.",
       "Cada carro também tem os próprios pontos, que valem para o campeonato de carros e pilotos. A aba Classificação mostra a regra da temporada em cada classe.",
       "Dois carros na mesma classe usam o mesmo projeto: cada upgrade de P&D vale para os dois, mas custa 50% a mais. Cada classe tem o seu próprio carro e P&D.",

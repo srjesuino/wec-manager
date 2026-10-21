@@ -803,14 +803,15 @@ export const PART_LABELS = Object.fromEntries(Object.entries(PART_INFO).map(([ke
 // ---------------------------------------------------------------------------
 
 // Regras de cada classe para as equipes:
-// Hypercar: 1 ou 2 carros; no campeonato de equipes os pontos dos carros da equipe se somam (como no de fabricantes).
+// Hypercar: 1 ou 2 carros; no campeonato de equipes só o carro mais bem colocado da equipe pontua. O segundo carro
+// não soma, mas ocupa a posição e tira pontos dos rivais (a ordem não é refeita entre as equipes).
 // LMGT3: sempre 2 carros. Até 2026 cada carro é uma inscrição separada no campeonato de equipes;
 // a partir de 2027 (regulamento aprovado pela FIA em out/2026) os pontos dos dois carros se somam.
-// teamScoring: "COMBINED" (os carros da equipe somam) ou "PER_CAR" (cada carro pontua sozinho)
+// teamScoring: "BEST_CAR" (só o melhor carro), "COMBINED" (os carros somam) ou "PER_CAR" (cada carro é uma inscrição)
 // bop: parte da diferença de carro para a média da classe que o BoP compensa e o limite (%). Na LMGT3,
 // com carros de clientes de várias marcas, o BoP é o grande equalizador e pesa mais.
 export const CLASS_RULES = {
-  HYPERCAR: { minCars: 1, maxCars: 2, teamScoring: "COMBINED", bop: { share: 0.4, limit: 2 }, label: "Hypercar", short: "HYP" },
+  HYPERCAR: { minCars: 1, maxCars: 2, teamScoring: "BEST_CAR", bop: { share: 0.4, limit: 2 }, label: "Hypercar", short: "HYP" },
   LMGT3: { minCars: 2, maxCars: 2, teamScoring: "COMBINED", perCarUntil: 2026, bop: { share: 0.6, limit: 3 }, label: "LMGT3", short: "GT3" }
 };
 export const CLASSES = ["HYPERCAR", "LMGT3"];

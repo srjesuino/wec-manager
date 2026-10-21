@@ -94,7 +94,7 @@ export const canUseToken = (team, cls, part) => !usesToken(part) || (programOf(t
 // Bônus de exposição dos patrocinadores por carro extra na pista
 export const sponsorExposure = carCount => 1 + Math.min(MAX_SPONSOR_EXPOSURE, Math.max(0, carCount - 1) * EXTRA_CAR_SPONSOR_BONUS);
 
-// Regra do campeonato de equipes da classe na temporada: "COMBINED" ou "PER_CAR"
+// Regra do campeonato de equipes da classe na temporada: "BEST_CAR", "COMBINED" ou "PER_CAR"
 export const teamScoring = (cls, season) => (season <= (CLASS_RULES[cls].perCarUntil ?? 0) ? "PER_CAR" : CLASS_RULES[cls].teamScoring);
 export const isPerCar = (cls, season) => teamScoring(cls, season) === "PER_CAR";
 
@@ -104,9 +104,10 @@ export const teamScoringText = (cls, season) => {
     const from = (CLASS_RULES[cls].perCarUntil ?? season) + 1;
     return `Cada carro é uma inscrição separada no campeonato de equipes (a partir de ${from} os dois carros somam).`;
   }
-  return CLASS_RULES[cls].maxCars > CLASS_RULES[cls].minCars
-    ? "Os pontos dos carros da equipe se somam (equipe de um carro pontua só com ele)."
-    : "Os pontos dos dois carros da equipe se somam.";
+  if (teamScoring(cls, season) === "BEST_CAR") {
+    return "Só o carro mais bem colocado da equipe pontua; o segundo carro não soma, mas ocupa a posição e tira pontos dos rivais.";
+  }
+  return "Os pontos dos dois carros da equipe se somam.";
 };
 
 // Quantidades de carro permitidas por classe

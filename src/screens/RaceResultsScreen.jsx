@@ -97,7 +97,9 @@ const TeamResultCard = ({ cls, rows, total, carTotals, text }) => {
             </div>
             <div className="text-right">
               <div className="text-2xl font-mono font-black text-yellow-400">+{rows[0].points}</div>
-              <div className="text-[10px] text-gray-500 font-bold uppercase">pontos de equipe</div>
+              <div className="text-[10px] text-gray-500 font-bold uppercase">
+                pontos de equipe{rows[0].scoredBy ? ` · com o #${rows[0].scoredBy}` : ""}
+              </div>
             </div>
           </div>
         )

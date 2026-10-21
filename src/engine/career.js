@@ -2,11 +2,12 @@ import { DIFFICULTIES, CLASS_RULES, POINTS_TABLE } from "../data/constants.js";
 import { clamp } from "../utils/helpers.js";
 import { carPerformance } from "./race.js";
 import { computeBop } from "./weekend.js";
-import { classPrograms, classEntries, entryView, teamClasses, isPerCar, PLAYER_ID } from "./team.js";
+import { classPrograms, classEntries, entryView, teamClasses, isPerCar, teamScoring, PLAYER_ID } from "./team.js";
 
 // ---------------------------------------------------------------------------
 // Campeonatos
-// Equipes (por classe): os carros da equipe somam pontos; na LMGT3 até 2026 cada carro é uma inscrição separada.
+// Equipes (por classe): na Hypercar só o melhor carro de cada equipe pontua; na LMGT3 cada carro é uma inscrição
+// separada até 2026 e os dois carros somam a partir de 2027.
 // Carros/pilotos (por classe): cada carro pontua pela sua posição na classe.
 // ---------------------------------------------------------------------------
 
@@ -82,12 +83,15 @@ export const expectedRank = (game, cls) => {
     .flatMap(row => row.entries.map(entry => ({ row, strength: entryStrength(row.program, entry, bop[row.key] || 0) + (row.team.id === PLAYER_ID ? 6 : 0) })))
     .sort((a, b) => b.strength - a.strength)
     .map((car, index) => ({ ...car, points: expectedPoints(index + 1) }));
-  const lines = isPerCar(cls, game.season)
-    ? cars.map(car => ({ teamId: car.row.team.id, points: car.points, strength: car.strength }))
-    : rows.map(row => {
-        const mine = cars.filter(car => car.row === row);
-        return { teamId: row.team.id, points: mine.reduce((sum, car) => sum + car.points, 0), strength: Math.max(0, ...mine.map(car => car.strength)) };
-      });
+  const scoring = teamScoring(cls, game.season);
+  const lines =
+    scoring === "PER_CAR"
+      ? cars.map(car => ({ teamId: car.row.team.id, points: car.points, strength: car.strength }))
+      : rows.map(row => {
+          const mine = cars.filter(car => car.row === row).map(car => car.points);
+          const points = scoring === "BEST_CAR" ? Math.max(0, ...mine) : mine.reduce((sum, value) => sum + value, 0);
+          return { teamId: row.team.id, points, strength: Math.max(0, ...cars.filter(car => car.row === row).map(car => car.strength)) };
+        });
   return lines.sort((a, b) => b.points - a.points || b.strength - a.strength).findIndex(line => line.teamId === PLAYER_ID) + 1;
 };
 
