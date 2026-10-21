@@ -45,39 +45,87 @@ export const developDriver = (driver, { simulatorLevel = 1, playerTeam = false }
 
 export const willRetire = driver => driver.age >= 36 && Math.random() < (driver.age - 35) * 0.15;
 
-// Contrata um piloto (ajusta salário à categoria e define contrato)
-export const signDriverTo = (driver, team, years = 2) => ({
+// Contrata um piloto para um carro (ajusta salário à classe do carro e define contrato)
+export const signDriverTo = (driver, entry, years = 2) => ({
   ...driver,
-  teamId: team.id,
-  wage: driverWageFor(driver, team.class),
+  teamId: entry.teamId ?? entry.id,
+  entryId: entry.id,
+  wage: driverWageFor(driver, entry.class),
   contractYears: years
 });
 
-// Preenche vagas de uma equipe da IA com o melhor piloto que ela consegue pagar
-export const fillAiVacancies = (team, pool, takenNames, news) => {
-  let next = { ...team, drivers: [...team.drivers] };
+const reserveOf = team => AI_TIERS[team.tier ?? 2].annual * econ(team.class) * 0.2;
+
+// Fábricas ricas trocam o pior piloto por uma estrela do mercado (as de maior verba escolhem primeiro)
+// Devolve equipes (caixa), carros (pilotos) e o mercado atualizados
+export const recruitStars = (teams, entries, pool, news) => {
   let available = [...pool];
-  const tier = AI_TIERS[team.tier ?? 2];
-  const reserve = tier.annual * econ(team.class) * 0.2;
-  const level = next.drivers.length ? next.drivers.reduce((sum, d) => sum + d.rating, 0) / next.drivers.length : 70;
-  while (next.drivers.length < DRIVERS_PER_CAR) {
-    const candidates = available
-      .filter(driver => driver.rating <= level + 8 && signingFee(driver, next.class) <= next.funds - reserve)
-      .sort((a, b) => b.rating - a.rating)
-      .slice(0, 3);
-    let signed;
-    if (candidates.length) {
-      const choice = candidates[Math.floor(Math.random() * candidates.length)];
-      available = available.filter(driver => driver.id !== choice.id);
-      next.funds -= signingFee(choice, next.class);
-      signed = signDriverTo(choice, next, randInt(1, 3));
-      if (choice.rating >= 80 && news) {
-        news.push({ driver: signed, team: next });
+  const funds = new Map(teams.map(team => [team.id, team.funds]));
+  const updatedEntries = new Map();
+  [...teams]
+    .sort((a, b) => (b.ai?.investment ?? 1) - (a.ai?.investment ?? 1))
+    .forEach(team => {
+      if ((team.ai?.investment ?? 1) < 1 && (team.tier ?? 2) > 0) {
+        return;
       }
-    } else {
-      signed = signDriverTo(generateRookie(takenNames), next, randInt(1, 2));
+      const cars = entries.filter(entry => entry.teamId === team.id);
+      const candidates = cars.flatMap(entry => entry.drivers.map(driver => ({ entry, driver })));
+      if (!candidates.length) {
+        return;
+      }
+      const { entry, driver: worst } = candidates.sort((a, b) => a.driver.rating - b.driver.rating)[0];
+      const star = available
+        .filter(driver => driver.rating >= worst.rating + 4 && signingFee(driver, team.class) <= funds.get(team.id) - reserveOf(team))
+        .sort((a, b) => b.rating - a.rating)[0];
+      if (!star) {
+        return;
+      }
+      available = available.filter(driver => driver.id !== star.id);
+      funds.set(team.id, funds.get(team.id) - signingFee(star, team.class));
+      const signed = signDriverTo(star, entry, randInt(2, 3));
+      const current = updatedEntries.get(entry.id) || entry;
+      updatedEntries.set(entry.id, { ...current, drivers: [...current.drivers.filter(driver => driver.id !== worst.id), signed] });
+      available.push({ ...worst, teamId: null, entryId: null, contractYears: 0 });
+      if (news && star.rating >= 80) {
+        news.push({ driver: signed, team });
+      }
+    });
+  return {
+    teams: teams.map(team => ({ ...team, funds: funds.get(team.id) })),
+    entries: entries.map(entry => updatedEntries.get(entry.id) || entry),
+    pool: available
+  };
+};
+
+// Preenche as vagas dos carros de uma equipe da IA com o melhor piloto que ela consegue pagar
+export const fillAiVacancies = (team, cars, pool, takenNames, news) => {
+  let funds = team.funds;
+  let available = [...pool];
+  const reserve = reserveOf(team);
+  const filled = cars.map(entry => {
+    const drivers = [...entry.drivers];
+    const all = cars.flatMap(car => car.drivers);
+    const level = all.length ? all.reduce((sum, d) => sum + d.rating, 0) / all.length : 70;
+    while (drivers.length < DRIVERS_PER_CAR) {
+      const candidates = available
+        .filter(driver => driver.rating <= level + 8 && signingFee(driver, entry.class) <= funds - reserve)
+        .sort((a, b) => b.rating - a.rating)
+        .slice(0, 3);
+      let signed;
+      if (candidates.length) {
+        const choice = candidates[Math.floor(Math.random() * candidates.length)];
+        available = available.filter(driver => driver.id !== choice.id);
+        funds -= signingFee(choice, entry.class);
+        signed = signDriverTo(choice, entry, randInt(1, 3));
+        if (choice.rating >= 80 && news) {
+          news.push({ driver: signed, team });
+        }
+      } else {
+        signed = signDriverTo(generateRookie(takenNames), entry, randInt(1, 2));
+      }
+      drivers.push(signed);
     }
-    next.drivers.push(signed);
-  }
-  return { team: next, pool: available };
+    return { ...entry, drivers };
+  });
+  return { team: { ...team, funds }, entries: filled, pool: available };
 };

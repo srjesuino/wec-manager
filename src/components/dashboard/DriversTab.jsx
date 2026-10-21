@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
-import { ArrowUp, Frown, Handshake, Lock, Meh, Smile, UserPlus, Users, X } from "lucide-react";
-import { TRACKS } from "../../data/constants";
+import { ArrowLeftRight, ArrowUp, Frown, Handshake, Lock, Meh, Smile, UserPlus, Users, X } from "lucide-react";
+import { TRACKS, CLASS_RULES } from "../../data/constants";
 import { ATTRIBUTE_LABELS, formatMoney } from "../../utils/helpers";
 import { signingFee, driverWageFor, releaseCost, requiredReputation } from "../../engine/economy";
-import { CategoryBadge, Flag, MeterBar } from "../ui/common";
+import { playerEntries, mainClass } from "../../engine/team";
+import { CategoryBadge, ClassBadge, Flag, MeterBar } from "../ui/common";
+
+const carLabel = entry => `#${entry.number} · ${CLASS_RULES[entry.class].label}`;
 
 const MoraleIcon = ({ value }) => {
   if (value >= 70) {
@@ -29,7 +32,7 @@ const potentialLabel = (driver, simulatorLevel) => {
   return `${low}-${high}`;
 };
 
-const DriverCard = ({ driver, index, team, onSetStarter }) => (
+const DriverCard = ({ driver, index, entry, onSetStarter, otherEntries, onSwap }) => (
   <div className="bg-gradient-to-br from-gray-800 to-gray-900 p-5 rounded-xl border border-gray-700 shadow-xl relative overflow-hidden group">
     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
       <Users size={64} />
@@ -80,9 +83,31 @@ const DriverCard = ({ driver, index, team, onSetStarter }) => (
         </div>
         <div className="text-right">
           <span className="text-[10px] text-gray-500 uppercase block">Salário</span>
-          <span className="font-bold text-red-300 font-mono">{formatMoney(driver.wage || driverWageFor(driver, team.class))}</span>
+          <span className="font-bold text-red-300 font-mono">{formatMoney(driver.wage || driverWageFor(driver, entry.class))}</span>
         </div>
       </div>
+      {otherEntries.length > 0 && (
+        <div className="mt-3 flex items-center gap-2">
+          <ArrowLeftRight size={12} className="text-gray-500 shrink-0" />
+          <select
+            value=""
+            onChange={e => e.target.value && onSwap(driver.id, e.target.value)}
+            className="flex-1 min-w-0 bg-gray-950 border border-gray-700 rounded-lg text-[11px] font-bold text-gray-300 px-2 py-1.5"
+            aria-label={`Trocar ${driver.name} de carro`}
+          >
+            <option value="">Trocar de carro com...</option>
+            {otherEntries.map(other => (
+              <optgroup label={carLabel(other)} key={other.id}>
+                {other.drivers.map(item => (
+                  <option value={item.id} key={item.id}>
+                    {item.name} ({item.rating})
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="mt-2 text-[10px] text-gray-500">
         Carreira: {driver.stats?.starts || 0} largadas · {driver.stats?.wins || 0} vitórias · {driver.stats?.podiums || 0} pódios · {driver.stats?.titles || 0} títulos
       </div>
@@ -90,12 +115,17 @@ const DriverCard = ({ driver, index, team, onSetStarter }) => (
   </div>
 );
 
-const SignModal = ({ driver, team, racesLeft, onConfirm, onClose }) => {
-  const fee = signingFee(driver, team.class);
-  const wage = driverWageFor(driver, team.class);
+const SignModal = ({ driver, entries, funds, racesLeft, onConfirm, onClose }) => {
+  const twoCars = entries.length > 1;
+  const main = entries[0];
+  const fee = signingFee(driver, main.class);
+  const wage = driverWageFor(driver, main.class);
   return (
     <div className="fixed inset-0 bg-gray-950/90 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="w-full max-w-lg bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl animate-in zoom-in-95 fade-in duration-200" onClick={event => event.stopPropagation()}>
+      <div
+        className="w-full max-w-lg bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl animate-in zoom-in-95 fade-in duration-200 max-h-[90vh] overflow-y-auto"
+        onClick={event => event.stopPropagation()}
+      >
         <div className="p-5 border-b border-gray-800 flex justify-between items-start">
           <div>
             <p className="text-[10px] uppercase font-bold text-gray-500">Contratação</p>
@@ -105,32 +135,45 @@ const SignModal = ({ driver, team, racesLeft, onConfirm, onClose }) => {
             <p className="text-xs text-gray-400">
               Luvas {formatMoney(fee)} · salário {formatMoney(wage)}/corrida · contrato de 2 temporadas
             </p>
+            {twoCars && <p className="text-[10px] text-gray-500 mt-1">Luvas e salário seguem a classe do carro em que ele vai correr.</p>}
           </div>
           <button onClick={onClose} className="p-2 rounded-full bg-gray-800 text-gray-300" aria-label="Fechar">
             <X size={18} />
           </button>
         </div>
-        <div className="p-5 space-y-2">
-          <p className="text-xs font-bold uppercase text-gray-500 mb-2">Quem deixa a equipe?</p>
-          {team.drivers.map(current => {
-            const penalty = releaseCost(current, racesLeft);
-            const total = fee + penalty;
-            const canAfford = team.funds >= total;
+        <div className="p-5 space-y-4">
+          <p className="text-xs font-bold uppercase text-gray-500">Quem deixa a equipe?</p>
+          {entries.map(entry => {
+            const carFee = signingFee(driver, entry.class);
             return (
-              <button
-                key={current.id}
-                disabled={!canAfford}
-                onClick={() => onConfirm(driver, current.id)}
-                className="w-full flex items-center justify-between gap-3 bg-gray-950 border border-gray-800 hover:border-red-500/60 rounded-lg px-4 py-3 text-left disabled:opacity-40"
-              >
-                <div>
-                  <div className="font-bold text-white">
-                    {current.name} <span className="text-gray-500">({current.rating})</span>
+              <div className="space-y-2" key={entry.id}>
+                {twoCars && (
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-400">
+                    <ClassBadge cls={entry.class} size="xs" /> {carLabel(entry)} · luvas {formatMoney(carFee)}
                   </div>
-                  <div className="text-[10px] text-gray-500">Multa rescisória {formatMoney(penalty)}</div>
-                </div>
-                <span className="font-mono text-sm font-bold text-red-300">-{formatMoney(total)}</span>
-              </button>
+                )}
+                {entry.drivers.map(current => {
+                  const penalty = releaseCost(current, racesLeft);
+                  const total = carFee + penalty;
+                  const canAfford = funds >= total;
+                  return (
+                    <button
+                      key={current.id}
+                      disabled={!canAfford}
+                      onClick={() => onConfirm(driver, current.id)}
+                      className="w-full flex items-center justify-between gap-3 bg-gray-950 border border-gray-800 hover:border-red-500/60 rounded-lg px-4 py-3 text-left disabled:opacity-40"
+                    >
+                      <div>
+                        <div className="font-bold text-white">
+                          {current.name} <span className="text-gray-500">({current.rating})</span>
+                        </div>
+                        <div className="text-[10px] text-gray-500">Multa rescisória {formatMoney(penalty)}</div>
+                      </div>
+                      <span className="font-mono text-sm font-bold text-red-300">-{formatMoney(total)}</span>
+                    </button>
+                  );
+                })}
+              </div>
             );
           })}
         </div>
@@ -146,28 +189,53 @@ const SORTS = {
   age: { label: "Mais jovens", fn: (a, b) => a.age - b.age }
 };
 
-const DriversTab = ({ game, onSignDriver, onSetStarter }) => {
+const DriversTab = ({ game, onSignDriver, onSetStarter, onSwapDrivers }) => {
   const player = game.playerTeam;
+  const entries = playerEntries(game);
+  const twoCars = entries.length > 1;
   const [sort, setSort] = useState("rating");
   const [onlyAffordable, setOnlyAffordable] = useState(false);
   const [pending, setPending] = useState(null);
   const simulatorLevel = player.facilities?.simulator ?? 1;
   const racesLeft = Math.max(1, TRACKS.length - game.raceIndex);
+  // Preços do mercado na escala da organização (Hypercar se tiver programa lá)
+  const scale = mainClass(player);
   const market = useMemo(
     () =>
       [...game.driversPool]
-        .filter(driver => !onlyAffordable || signingFee(driver, player.class) <= player.funds)
+        .filter(driver => !onlyAffordable || signingFee(driver, scale) <= player.funds)
         .sort(SORTS[sort].fn),
-    [game.driversPool, onlyAffordable, sort, player.class, player.funds]
+    [game.driversPool, onlyAffordable, sort, scale, player.funds]
   );
   return (
     <div className="flex flex-col xl:flex-row gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-20 md:pb-0">
       <div className="xl:w-[38%] space-y-4">
-        <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-2">Line-up ({player.drivers.length} pilotos)</h3>
-        {player.drivers.map((driver, index) => (
-          <DriverCard driver={driver} index={index} team={player} onSetStarter={onSetStarter} key={driver.id} />
-        ))}
-        <p className="text-[11px] text-gray-500">O titular larga a corrida. Os outros entram nas trocas de piloto durante os pit stops.</p>
+        {entries.map(entry => {
+          const otherEntries = entries.filter(item => item.id !== entry.id);
+          return (
+            <div className="space-y-4" key={entry.id}>
+              <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2">
+                <ClassBadge cls={entry.class} size="xs" /> {carLabel(entry)}
+                <span className="text-gray-600 normal-case tracking-normal">({entry.drivers.length} pilotos)</span>
+              </h3>
+              {entry.drivers.map((driver, index) => (
+                <DriverCard
+                  driver={driver}
+                  index={index}
+                  entry={entry}
+                  onSetStarter={onSetStarter}
+                  otherEntries={otherEntries}
+                  onSwap={onSwapDrivers}
+                  key={driver.id}
+                />
+              ))}
+            </div>
+          );
+        })}
+        <p className="text-[11px] text-gray-500">
+          O titular larga a corrida. Os outros entram nas trocas de piloto durante os pit stops.
+          {twoCars ? " Trocar pilotos de carro não muda o salário do contrato; contratações pagam as luvas na classe do carro." : ""}
+        </p>
       </div>
       <div className="xl:flex-1 bg-gray-900 border border-gray-800 rounded-xl flex flex-col overflow-hidden h-auto xl:h-[calc(100vh-11rem)]">
         <div className="p-4 border-b border-gray-800 bg-gray-800/50 sticky top-0 z-20 backdrop-blur-sm flex flex-wrap gap-3 justify-between items-center">
@@ -209,7 +277,7 @@ const DriversTab = ({ game, onSignDriver, onSetStarter }) => {
             </thead>
             <tbody className="divide-y divide-gray-800 text-sm">
               {market.map(driver => {
-                const fee = signingFee(driver, player.class);
+                const fee = signingFee(driver, scale);
                 const repNeeded = requiredReputation(driver);
                 const locked = (player.reputation ?? 0) < repNeeded;
                 return (
@@ -219,7 +287,7 @@ const DriversTab = ({ game, onSignDriver, onSetStarter }) => {
                         <Flag driver={driver} /> {driver.name}
                       </div>
                       <div className="text-[10px] text-gray-500 flex items-center gap-2 mt-0.5">
-                        <CategoryBadge rating={driver.rating} /> {driver.age} anos · {formatMoney(driverWageFor(driver, player.class))}/corrida
+                        <CategoryBadge rating={driver.rating} /> {driver.age} anos · {formatMoney(driverWageFor(driver, scale))}/corrida
                       </div>
                     </td>
                     <td className="p-3 text-center">
@@ -262,7 +330,8 @@ const DriversTab = ({ game, onSignDriver, onSetStarter }) => {
       {pending && (
         <SignModal
           driver={pending}
-          team={player}
+          entries={entries}
+          funds={player.funds}
           racesLeft={racesLeft}
           onClose={() => setPending(null)}
           onConfirm={(driver, replaceId) => {

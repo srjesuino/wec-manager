@@ -1,5 +1,5 @@
-import { SERIES_CONFIG, FACILITY_ORDER, STAFF_ORDER } from "../data/constants.js";
-import { calculateWage } from "../utils/helpers.js";
+import { SERIES_CONFIG, FACILITY_ORDER, STAFF_ORDER, EXTRA_CAR, HOMOLOGATION, TOKEN_FREE_PARTS } from "../data/constants.js";
+import { calculateWage, clamp } from "../utils/helpers.js";
 
 export const CAR_PARTS = ["engine", "aero", "chassis", "reliability", "efficiency", "crew"];
 export const MAIN_PARTS = ["engine", "aero", "chassis"];
@@ -19,22 +19,38 @@ const PART_FACILITY = {
   crew: null
 };
 
-export const facilityDiscount = (team, part) => {
+export const facilityDiscount = (facilities, part) => {
   const facility = PART_FACILITY[part];
-  if (!facility || !team.facilities) {
+  if (!facility || !facilities) {
     return 0;
   }
-  return (team.facilities[facility] - 1) * 0.06;
+  return (facilities[facility] - 1) * 0.06;
 };
 
 // Mesmo custo para jogador e IA: cresce exponencialmente com o nível da peça
 // e fica bem mais caro acima de 80 (rendimento decrescente perto do limite).
-export const upgradeCost = (team, part) => {
-  const cfg = SERIES_CONFIG[team.class];
-  const level = team.car[part] ?? 0;
+// facilities: fábrica do jogador (a IA não tem desconto)
+export const upgradeCost = (cls, car, part, facilities = null) => {
+  const cfg = SERIES_CONFIG[cls];
+  const level = car[part] ?? 0;
   const nearCap = 1 + Math.max(0, level - 80) / 8;
-  const cost = cfg.partsCostBase * Math.pow(cfg.upgradeGrowth, level) * nearCap * (1 - facilityDiscount(team, part));
+  const cost = cfg.partsCostBase * Math.pow(cfg.upgradeGrowth, level) * nearCap * (1 - facilityDiscount(facilities, part));
   return Math.floor(cost);
+};
+
+// ---------------------------------------------------------------------------
+// Homologação (fichas de evolução por temporada)
+// ---------------------------------------------------------------------------
+
+export const usesToken = part => !TOKEN_FREE_PARTS.includes(part);
+
+const mainAverage = car => MAIN_PARTS.reduce((sum, part) => sum + (car[part] ?? 0), 0) / MAIN_PARTS.length;
+
+// car: projeto do programa; classCars: projetos de todos os programas da classe
+export const homologationTokens = (car, classCars, newRegulation = false) => {
+  const best = Math.max(...classCars.map(item => mainAverage(item)));
+  const extra = clamp(Math.floor((best - mainAverage(car)) / HOMOLOGATION.catchUpEvery), 0, HOMOLOGATION.catchUpMax);
+  return (newRegulation ? HOMOLOGATION.newRegulation : HOMOLOGATION.base) + extra;
 };
 
 // Chance de o upgrade render +3 (Diretor Técnico)
@@ -49,23 +65,24 @@ export const bonusUpgradeChance = team => {
 
 export const facilityUpgradeCost = (cls, currentLevel) => Math.floor(3000000 * Math.pow(currentLevel, 1.6) * econ(cls));
 
-export const facilityUpkeep = team => {
+// cls: classe que define a escala da organização (Hypercar se tiver programa lá)
+export const facilityUpkeep = (team, cls) => {
   if (!team.facilities) {
     return 0;
   }
   const levels = FACILITY_ORDER.reduce((sum, id) => sum + (team.facilities[id] || 1), 0);
-  return Math.floor(levels * 25000 * econ(team.class));
+  return Math.floor(levels * 25000 * econ(cls));
 };
 
 const STAFF_SALARY = [0, 40000, 70000, 110000, 160000, 230000];
 export const staffSalary = (stars, cls) => Math.floor(STAFF_SALARY[stars] * econ(cls));
 export const staffHiringFee = (stars, cls) => staffSalary(stars, cls) * 3;
 
-export const staffPayroll = team => {
+export const staffPayroll = (team, cls) => {
   if (!team.staff) {
     return 0;
   }
-  return STAFF_ORDER.reduce((sum, role) => sum + (team.staff[role] ? staffSalary(team.staff[role].stars, team.class) : 0), 0);
+  return STAFF_ORDER.reduce((sum, role) => sum + (team.staff[role] ? staffSalary(team.staff[role].stars, cls) : 0), 0);
 };
 
 // ---------------------------------------------------------------------------
@@ -74,7 +91,9 @@ export const staffPayroll = team => {
 
 export const driverWageFor = (driver, cls) => Math.floor(calculateWage(driver.rating) * econ(cls));
 export const signingFee = (driver, cls) => Math.floor(driver.marketValue * econ(cls));
-export const driversPayroll = team => team.drivers.reduce((sum, driver) => sum + (driver.wage || 0), 0);
+// Salários de um carro (ou de uma lista de carros)
+export const driversPayroll = entries =>
+  (Array.isArray(entries) ? entries : [entries]).reduce((sum, entry) => sum + entry.drivers.reduce((total, driver) => total + (driver.wage || 0), 0), 0);
 
 // Multa para dispensar um piloto: metade do salário restante da temporada
 export const releaseCost = (driver, racesLeft) => Math.floor((driver.wage || 0) * Math.max(1, racesLeft) * 0.5);
@@ -152,5 +171,16 @@ export const racePrize = (cls, classPos, finished, multiplier = 1) => {
   return Math.floor(value * multiplier);
 };
 
-// Prêmio do campeonato (por posição final na classe)
-export const seasonPrize = (cls, position, classSize) => (classSize - position + 1) * SERIES_CONFIG[cls].seasonPrizeStep;
+// Prêmio do campeonato de equipes (por posição final na classe; os 10 primeiros recebem mais)
+export const seasonPrize = (cls, position, classSize) => Math.max(1, Math.min(classSize, 10) - position + 1) * SERIES_CONFIG[cls].seasonPrizeStep;
+
+// ---------------------------------------------------------------------------
+// Carros extras (todo carro além do primeiro da equipe)
+// ---------------------------------------------------------------------------
+
+export const extraCarOperations = cls => EXTRA_CAR[cls]?.operations ?? 0;
+export const carEntryFee = cls => EXTRA_CAR[cls]?.entryFee ?? 0;
+
+// Orçamento anual da diretoria para um programa com N carros (cada carro extra soma uma fatia)
+export const programAnnualBudget = (cls, cars) => Math.floor(SERIES_CONFIG[cls].annualBudget * (cars > 0 ? 1 + (cars - 1) * (EXTRA_CAR[cls]?.budgetShare ?? 0.5) : 0));
+export const programStartBudget = (cls, cars) => Math.floor(SERIES_CONFIG[cls].budget * (cars > 0 ? 1 + (cars - 1) * (EXTRA_CAR[cls]?.budgetShare ?? 0.5) : 0));

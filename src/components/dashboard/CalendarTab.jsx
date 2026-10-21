@@ -1,5 +1,5 @@
 import { CheckCheck, CirclePlay, Moon } from "lucide-react";
-import { TRACKS, TRACK_TYPE_LABELS } from "../../data/constants";
+import { CLASS_RULES, TRACKS, TRACK_TYPE_LABELS } from "../../data/constants";
 import { hasNightRacing } from "./OverviewTab";
 import { CountryCode } from "../ui/common";
 
@@ -8,13 +8,15 @@ const CalendarTab = ({ game }) => {
   return (
     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <p className="text-sm text-gray-400 mb-2">
-        Mundial de Endurance {game.season} · {TRACKS.length} etapas. Le Mans vale pontos em dobro; Qatar e Bahrein valem 1,5x. A pole de cada classe vale 1 ponto.
+        Mundial de Endurance {game.season} · {TRACKS.length} etapas. Le Mans vale pontos em dobro; Qatar e Bahrein valem 1,5x. A pole de cada classe vale 1 ponto. Os carros pontuam pela posição na classe; a equipe pontua pelas regras de cada classe.
       </p>
       {TRACKS.map((track, index) => {
         const result = races[index];
         const done = index < game.raceIndex;
         const next = index === game.raceIndex;
-        const mine = result?.player;
+        const mine = result ? (result.players?.length ? result.players : result.player ? [result.player] : []) : [];
+        const multiCar = mine.length > 1;
+        const teamRows = Object.entries(result?.playerTeams || {});
         return (
           <div
             className={`flex flex-col md:flex-row md:items-center gap-3 md:gap-5 p-4 rounded-xl border transition-colors ${
@@ -50,17 +52,28 @@ const CalendarTab = ({ game }) => {
             </div>
             <div className="flex-1 text-sm">
               {done && result ? (
-                <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-6">
-                  <span className="text-gray-400">
-                    <span className="text-red-400 font-bold">HYP</span> {result.winner}
-                  </span>
-                  <span className="text-gray-400">
-                    <span className="text-yellow-400 font-bold">GT3</span> {result.gt3Winner}
-                  </span>
-                  {mine && (
-                    <span className={`font-bold ${!mine.finished ? "text-red-400" : mine.classPos <= 3 ? "text-green-400" : "text-blue-300"}`}>
-                      Você: {mine.finished ? `P${mine.classPos}` : "DNF"} ({mine.points} pts)
+                <div className="space-y-1">
+                  <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-1 md:gap-x-6">
+                    <span className="text-gray-400">
+                      <span className="text-red-400 font-bold">HYP</span> {result.winner}
                     </span>
+                    <span className="text-gray-400">
+                      <span className="text-yellow-400 font-bold">GT3</span> {result.gt3Winner}
+                    </span>
+                  </div>
+                  {(mine.length > 0 || teamRows.length > 0) && (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                      {mine.map((car, i) => (
+                        <span className={`font-bold ${!car.finished ? "text-red-400" : car.classPos <= 3 ? "text-green-400" : "text-blue-300"}`} key={car.entryId || car.teamId || i}>
+                          {multiCar ? `#${car.number}${car.class ? ` ${CLASS_RULES[car.class]?.short ?? ""}` : ""}` : "Você"}: {car.finished ? `P${car.classPos}` : "DNF"} ({car.points} pts)
+                        </span>
+                      ))}
+                      {teamRows.map(([cls, row]) => (
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-gray-800 text-gray-300" key={cls}>
+                          Equipe {CLASS_RULES[cls]?.short ?? cls}: {row.position ? `${row.position}º` : "—"} · {row.points} pts
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
               ) : next ? (

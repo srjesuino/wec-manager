@@ -1,12 +1,82 @@
-import { POINTS_TABLE, POLE_POINTS } from "../data/constants.js";
+import { POINTS_TABLE, POLE_POINTS, CLASSES } from "../data/constants.js";
 import { clamp, toDisplayTime } from "../utils/helpers.js";
 import { rankGrid } from "./race.js";
-import { racePrize, sponsorPayout, sponsorMultiplier, driversPayroll, staffPayroll, facilityUpkeep } from "./economy.js";
-import { developAiTeams } from "./ai.js";
-import { reputationDelta, confidenceRaceDelta } from "./career.js";
+import {
+  racePrize,
+  sponsorPayout,
+  sponsorMultiplier,
+  sponsorGoal,
+  driversPayroll,
+  staffPayroll,
+  facilityUpkeep,
+  extraCarOperations
+} from "./economy.js";
+import { developAiTeams, aiRaceSupport } from "./ai.js";
+import { reputationDelta, confidenceRaceDelta, classWeight } from "./career.js";
+import { PLAYER_ID, teamScoring, mainClass, playerEntries, sponsorExposure } from "./team.js";
 
 export const racePoints = (classPos, multiplier = 1) =>
   classPos <= POINTS_TABLE.length ? Math.ceil(POINTS_TABLE[classPos - 1] * multiplier) : 0;
+
+// Resultado das equipes numa classe a partir do resultado dos carros (regra da temporada, ver teamScoring)
+// BEST_CAR: só o carro mais bem colocado pontua, com os pontos da sua posição real na classe (o segundo carro
+// não soma, mas a posição dele não é repassada a ninguém). COMBINED: os carros somam. PER_CAR: cada carro é uma linha.
+export const teamRaceResults = (carResults, cls, multiplier = 1, season = null) => {
+  const scoring = teamScoring(cls, season ?? Infinity);
+  if (scoring === "PER_CAR") {
+    return carResults.map((car, index) => ({
+      teamId: car.teamId,
+      entryId: car.entryId,
+      teamName: car.teamName,
+      color: car.color,
+      isPlayer: car.isPlayer,
+      cars: [car.entryId],
+      numbers: [car.number],
+      finished: car.finished,
+      pole: car.pole,
+      bestClassPos: car.classPos,
+      carPoints: car.points,
+      position: index + 1,
+      points: car.points,
+      win: car.finished && car.classPos === 1,
+      podium: car.finished && car.classPos <= 3,
+      perCar: true
+    }));
+  }
+  const groups = new Map();
+  carResults.forEach(result => {
+    if (!groups.has(result.teamId)) {
+      groups.set(result.teamId, []);
+    }
+    groups.get(result.teamId).push(result);
+  });
+  const rows = [...groups.values()].map(cars => {
+    // O melhor carro: a menor posição na classe (quem abandonou já fica atrás de quem terminou)
+    const best = cars.reduce((top, car) => (car.classPos < top.classPos ? car : top), cars[0]);
+    return {
+      teamId: best.teamId,
+      teamName: best.teamName,
+      color: best.color,
+      isPlayer: best.isPlayer,
+      cars: cars.map(car => car.entryId),
+      numbers: cars.map(car => car.number),
+      finished: cars.some(car => car.finished),
+      pole: cars.some(car => car.pole),
+      bestClassPos: best.classPos,
+      carPoints: scoring === "BEST_CAR" ? best.points : cars.reduce((sum, car) => sum + car.points, 0),
+      scoredBy: scoring === "BEST_CAR" && cars.length > 1 ? best.number : null,
+      win: cars.some(car => car.finished && car.classPos === 1),
+      podium: cars.some(car => car.finished && car.classPos <= 3),
+      perCar: false
+    };
+  });
+  rows.sort((a, b) => b.carPoints - a.carPoints || a.bestClassPos - b.bestClassPos);
+  rows.forEach((row, index) => {
+    row.position = index + 1;
+    row.points = row.carPoints;
+  });
+  return rows;
+};
 
 // Classificação final de cada classe (quem abandonou fica atrás de quem terminou e não pontua)
 export const buildRaceReport = (raceState, game) => {
@@ -14,7 +84,8 @@ export const buildRaceReport = (raceState, game) => {
   const multiplier = track.pointsMultiplier || 1;
   const ranked = rankGrid(raceState.grid);
   const classes = {};
-  ["HYPERCAR", "LMGT3"].forEach(cls => {
+  const teams = {};
+  CLASSES.forEach(cls => {
     const cars = ranked.filter(car => car.class === cls);
     const winner = cars[0];
     classes[cls] = cars.map((car, index) => {
@@ -32,12 +103,13 @@ export const buildRaceReport = (raceState, game) => {
         gap = `+${toDisplayTime(Math.max(0, (car.finishTime ?? raceState.elapsed) - (winner.finishTime ?? raceState.elapsed)), track).toFixed(1)}s`;
       }
       return {
+        entryId: car.entryId,
         teamId: car.teamId,
         teamName: car.teamName,
         class: cls,
         number: car.number,
         color: car.color,
-        isPlayer: car.isPlayer,
+        isPlayer: car.teamId === PLAYER_ID,
         classPos,
         overallPos: car.position,
         finished,
@@ -55,16 +127,22 @@ export const buildRaceReport = (raceState, game) => {
           name: driver.name,
           driveTime: car.driveTime[i]
         })),
-        fastestLap: raceState.fastestLaps[cls]?.teamId === car.teamId
+        fastestLap: raceState.fastestLaps[cls]?.entryId === car.entryId
       };
     });
+    teams[cls] = teamRaceResults(classes[cls], cls, multiplier, game.season);
   });
+  // Carros do jogador: Hypercar primeiro
+  const players = CLASSES.flatMap(cls => classes[cls].filter(result => result.isPlayer));
   return {
     season: game.season,
     raceIndex: game.raceIndex,
     track,
     classes,
-    player: Object.values(classes).flat().find(result => result.isPlayer),
+    teams,
+    player: players[0],
+    players,
+    playerTeams: Object.fromEntries(CLASSES.map(cls => [cls, teams[cls].find(row => row.isPlayer)]).filter(([, row]) => row)),
     fastestLaps: Object.fromEntries(Object.entries(raceState.fastestLaps).map(([cls, lap]) => [cls, { ...lap, time: toDisplayTime(lap.time, track) }])),
     events: raceState.events,
     rain: raceState.events.some(event => event.type === "weather" && event.text.includes("chuva")),
@@ -74,34 +152,30 @@ export const buildRaceReport = (raceState, game) => {
   };
 };
 
-const applyResultToTeam = (team, result, classSize) => {
-  const next = {
-    ...team,
-    stats: { wins: 0, podiums: 0, poles: 0, ...team.stats }
-  };
-  next.points += result.points;
+// Pontos, estatísticas e moral dos pilotos de um carro
+const applyResultToEntry = (entry, result, classSize) => {
+  const stats = { wins: 0, podiums: 0, poles: 0, ...entry.stats };
   if (result.finished && result.classPos === 1) {
-    next.stats.wins += 1;
-    next.careerWins = (next.careerWins || 0) + 1;
+    stats.wins += 1;
   }
   if (result.finished && result.classPos <= 3) {
-    next.stats.podiums += 1;
+    stats.podiums += 1;
   }
   if (result.pole) {
-    next.stats.poles += 1;
+    stats.poles += 1;
   }
   const driveTimes = new Map(result.drivers.map(driver => [driver.id, driver.driveTime]));
-  next.drivers = team.drivers.map(driver => {
+  const drivers = entry.drivers.map(driver => {
     if (!(driveTimes.get(driver.id) > 0)) {
       return driver;
     }
-    const stats = { wins: 0, podiums: 0, titles: 0, starts: 0, ...driver.stats };
-    stats.starts += 1;
+    const driverStats = { wins: 0, podiums: 0, titles: 0, starts: 0, ...driver.stats };
+    driverStats.starts += 1;
     if (result.finished && result.classPos === 1) {
-      stats.wins += 1;
+      driverStats.wins += 1;
     }
     if (result.finished && result.classPos <= 3) {
-      stats.podiums += 1;
+      driverStats.podiums += 1;
     }
     let moraleDelta = -2;
     if (!result.finished) {
@@ -113,51 +187,134 @@ const applyResultToTeam = (team, result, classSize) => {
     }
     return {
       ...driver,
-      stats,
+      stats: driverStats,
       seasonPoints: (driver.seasonPoints || 0) + result.points,
       morale: clamp((driver.morale ?? 75) + moraleDelta, 20, 100)
     };
   });
-  return next;
+  return { ...entry, points: (entry.points || 0) + result.points, stats, drivers };
 };
 
-// Aplica o resultado da corrida: pontos, estatísticas, finanças, reputação e evolução da IA
+// Pontos e estatísticas de equipe nos programas (campeonato de equipes) e vitórias de carreira da organização
+const applyTeamResults = (team, teamResults) => {
+  let careerWins = team.careerWins || 0;
+  const programs = { ...team.programs };
+  Object.entries(teamResults).forEach(([cls, row]) => {
+    const program = programs[cls];
+    if (!program || !row) {
+      return;
+    }
+    const stats = { wins: 0, podiums: 0, poles: 0, ...program.stats };
+    if (row.win) {
+      stats.wins += 1;
+      careerWins += 1;
+    }
+    if (row.podium) {
+      stats.podiums += 1;
+    }
+    if (row.pole) {
+      stats.poles += 1;
+    }
+    programs[cls] = { ...program, points: (program.points || 0) + row.points, stats };
+  });
+  return { ...team, programs, careerWins };
+};
+
+// Melhor pagamento de um patrocinador entre os carros do jogador (cada carro é avaliado pela meta da sua classe)
+const sponsorPayoutFor = (contract, results, { isLeMans, multiplier }) => {
+  if (contract.type === "GAMBLE" || results.length <= 1) {
+    const result = results[0];
+    return sponsorPayout(contract, { classPos: result?.finished ? result.classPos : null, isLeMans, multiplier });
+  }
+  return results
+    .map(result =>
+      sponsorPayout(
+        { ...contract, goalPosition: contract.goal ? sponsorGoal(contract, result.class) ?? contract.goalPosition : contract.goalPosition },
+        { classPos: result.finished ? result.classPos : null, isLeMans, multiplier }
+      )
+    )
+    .reduce((best, payout) => (payout.payment > best.payment || (payout.payment === best.payment && !payout.note) ? payout : best));
+};
+
+const raceSummaryOf = result =>
+  result
+    ? {
+        entryId: result.entryId,
+        number: result.number,
+        class: result.class,
+        classPos: result.classPos,
+        finished: result.finished,
+        points: result.points,
+        dnfReason: result.dnfReason
+      }
+    : null;
+
+// Aplica o resultado da corrida: pontos (carros e equipes), estatísticas, finanças, reputação e evolução da IA
 export const applyRaceResults = (game, report) => {
   const track = report.track;
   const multiplier = track.pointsMultiplier || 1;
   const isLeMans = track.id === "lemans";
-  const results = new Map(Object.values(report.classes).flat().map(result => [result.teamId, result]));
+  const results = new Map(Object.values(report.classes).flat().map(result => [result.entryId, result]));
   const classSize = cls => report.classes[cls].length;
+  const teamsInClass = cls => report.teams[cls].length;
+  // Melhor linha da equipe em cada classe (na regra PER_CAR, o melhor carro)
+  const teamResultsOf = teamId =>
+    Object.fromEntries(CLASSES.map(cls => [cls, report.teams[cls].find(row => row.teamId === teamId)]).filter(([, row]) => row));
+  // Pontos do programa: as linhas da equipe somadas (uma só linha em BEST_CAR e COMBINED; nas classes PER_CAR
+  // a tabela usa os carros e o programa guarda o total da equipe)
+  const programResultsOf = teamId =>
+    Object.fromEntries(
+      CLASSES.map(cls => {
+        const rows = report.teams[cls].filter(row => row.teamId === teamId);
+        return [cls, rows.length ? { ...rows[0], points: rows.reduce((sum, row) => sum + row.points, 0), win: rows.some(row => row.win), podium: rows.some(row => row.podium), pole: rows.some(row => row.pole) } : null];
+      }).filter(([, row]) => row)
+    );
 
-  let aiTeams = game.aiTeams.map(team => {
-    const result = results.get(team.id);
-    if (!result) {
-      return team;
-    }
-    const next = applyResultToTeam(team, result, classSize(team.class));
-    next.funds += racePrize(next.class, result.classPos, result.finished, multiplier) + (next.support || 0) - driversPayroll(next);
+  // Carros
+  const entries = game.entries.map(entry => {
+    const result = results.get(entry.id);
+    return result ? applyResultToEntry(entry, result, classSize(entry.class)) : entry;
+  });
+  const carsOf = team => entries.filter(entry => entry.teamId === team.id).length;
+
+  // Equipes da IA: pontos de equipe, prêmios, repasse da matriz e salários; depois o P&D
+  let aiTeams = game.teams.map(team => {
+    const next = applyTeamResults(team, programResultsOf(team.id));
+    const cars = entries.filter(entry => entry.teamId === team.id);
+    const prizes = cars.reduce((sum, entry) => {
+      const result = results.get(entry.id);
+      return sum + (result ? racePrize(entry.class, result.classPos, result.finished, multiplier) : 0);
+    }, 0);
+    next.funds += prizes + aiRaceSupport(next, cars.length, game.career.difficulty) - driversPayroll(cars);
     return next;
   });
-  aiTeams = developAiTeams(aiTeams, 2);
+  aiTeams = developAiTeams(aiTeams, carsOf, 0.3);
 
-  const playerResult = results.get(game.playerTeam.id);
-  const player = applyResultToTeam(game.playerTeam, playerResult, classSize(game.playerTeam.class));
+  // Equipe do jogador
+  const playerTeamResults = teamResultsOf(PLAYER_ID);
+  const player = applyTeamResults(game.playerTeam, programResultsOf(PLAYER_ID));
+  const myCars = playerEntries({ ...game, entries });
+  const multi = myCars.length > 1;
+  const playerResults = myCars.map(entry => results.get(entry.id)).filter(Boolean);
+  const label = result => (multi ? ` #${result.number}` : "");
+  const scale = mainClass(player);
+
   const items = [];
-  const prize = racePrize(player.class, playerResult.classPos, playerResult.finished, multiplier);
-  items.push({
-    label: playerResult.finished ? `Prêmio da corrida (P${playerResult.classPos})` : "Prêmio de largada (abandono)",
-    amount: prize,
-    type: "income"
+  let prize = 0;
+  playerResults.forEach(result => {
+    const amount = racePrize(result.class, result.classPos, result.finished, multiplier);
+    prize += amount;
+    items.push({
+      label: result.finished ? `Prêmio da corrida${label(result)} (P${result.classPos})` : `Prêmio de largada${label(result)} (abandono)`,
+      amount,
+      type: "income"
+    });
   });
   const expiredSponsors = [];
-  const sponsorMult = sponsorMultiplier(player);
+  const sponsorMult = sponsorMultiplier(player) * sponsorExposure(myCars.length);
   player.sponsors = player.sponsors
     .map(contract => {
-      const { payment, note } = sponsorPayout(contract, {
-        classPos: playerResult.finished ? playerResult.classPos : null,
-        isLeMans,
-        multiplier: sponsorMult
-      });
+      const { payment, note } = sponsorPayoutFor(contract, playerResults, { isLeMans, multiplier: sponsorMult });
       items.push({ label: `${contract.name}${note ? ` (${note})` : ""}`, amount: payment, type: "sponsor" });
       return { ...contract, remaining: contract.remaining - 1 };
     })
@@ -168,15 +325,21 @@ export const applyRaceResults = (game, report) => {
       }
       return true;
     });
-  items.push({ label: "Salários dos pilotos", amount: -driversPayroll(player), type: "expense" });
-  const staff = staffPayroll(player);
+  myCars.forEach(entry => {
+    items.push({ label: `Salários dos pilotos${multi ? ` #${entry.number}` : ""}`, amount: -driversPayroll(entry), type: "expense" });
+  });
+  const staff = staffPayroll(player, scale);
   if (staff) {
     items.push({ label: "Equipe técnica", amount: -staff, type: "expense" });
   }
-  const upkeep = facilityUpkeep(player);
+  const upkeep = facilityUpkeep(player, scale);
   if (upkeep) {
     items.push({ label: "Manutenção das instalações", amount: -upkeep, type: "expense" });
   }
+  // Todo carro além do primeiro custa logística e mecânicos extras
+  myCars.slice(1).forEach(entry => {
+    items.push({ label: `Operação do carro #${entry.number}`, amount: -extraCarOperations(entry.class), type: "expense" });
+  });
   const net = items.reduce((sum, item) => sum + item.amount, 0);
   player.funds += net;
   player.ledger = [
@@ -190,47 +353,69 @@ export const applyRaceResults = (game, report) => {
       balance: player.funds
     }
   ].slice(-48);
-  const repDelta = reputationDelta(playerResult, classSize(player.class), isLeMans, player.facilities?.hospitality ?? 1, game.career.objective?.position);
+
+  // Reputação e conselho: o resultado da equipe em cada classe (com dois programas, a LMGT3 pesa 60%)
+  const hospitality = player.facilities?.hospitality ?? 1;
+  let repTotal = 0;
+  let confTotal = 0;
+  Object.entries(playerTeamResults).forEach(([cls, row]) => {
+    const weight = classWeight(game, cls);
+    const outcome = { finished: row.finished, classPos: row.position, pole: row.pole };
+    const objective = game.career.objectives?.[cls];
+    repTotal += reputationDelta(outcome, teamsInClass(cls), isLeMans, hospitality, objective?.position) * weight;
+    if (objective) {
+      confTotal += confidenceRaceDelta(outcome, objective, game.career.difficulty) * weight;
+    }
+  });
+  const repDelta = Math.round(repTotal * 10) / 10;
   player.reputation = clamp(Math.round(((player.reputation ?? 30) + repDelta) * 10) / 10, 0, 100);
-  const confDelta = confidenceRaceDelta(playerResult, game.career.objective, game.career.difficulty);
+  const confDelta = Math.round(confTotal);
   const career = { ...game.career, confidence: clamp(game.career.confidence + confDelta, 0, 100) };
 
   const hyper = report.classes.HYPERCAR;
   const gt3 = report.classes.LMGT3;
   const finishers = list => list.filter(result => result.finished);
+  const carName = result => `${result.teamName} #${result.number}`;
   const raceRecord = {
     track: track.name,
     trackId: track.id,
-    winner: finishers(hyper)[0]?.teamName || "N/A",
-    podium: finishers(hyper).slice(0, 3).map(result => result.teamName),
-    gt3Winner: finishers(gt3)[0]?.teamName || "N/A",
-    gt3Podium: finishers(gt3).slice(0, 3).map(result => result.teamName),
+    winner: finishers(hyper)[0] ? carName(finishers(hyper)[0]) : "N/A",
+    podium: finishers(hyper).slice(0, 3).map(carName),
+    gt3Winner: finishers(gt3)[0] ? carName(finishers(gt3)[0]) : "N/A",
+    gt3Podium: finishers(gt3).slice(0, 3).map(carName),
+    teamWinners: Object.fromEntries(
+      CLASSES.map(cls => {
+        const row = report.teams[cls][0];
+        return [cls, row ? `${row.teamName}${row.perCar ? ` #${row.numbers[0]}` : ""}` : "N/A"];
+      })
+    ),
     poles: {
-      HYPERCAR: hyper.find(result => result.pole)?.teamName,
-      LMGT3: gt3.find(result => result.pole)?.teamName
+      HYPERCAR: hyper.find(result => result.pole) ? carName(hyper.find(result => result.pole)) : undefined,
+      LMGT3: gt3.find(result => result.pole) ? carName(gt3.find(result => result.pole)) : undefined
     },
-    player: {
-      classPos: playerResult.classPos,
-      finished: playerResult.finished,
-      points: playerResult.points,
-      dnfReason: playerResult.dnfReason
-    }
+    player: raceSummaryOf(playerResults[0]),
+    players: playerResults.map(raceSummaryOf),
+    playerTeams: Object.fromEntries(Object.entries(playerTeamResults).map(([cls, row]) => [cls, { position: row.position, points: row.points, finished: row.finished }]))
   };
 
-  return {
-    game: {
-      ...game,
-      playerTeam: player,
-      aiTeams,
-      raceIndex: game.raceIndex + 1,
-      archive: {
-        ...game.archive,
-        currentSeasonRaces: [...game.archive.currentSeasonRaces, raceRecord]
-      },
-      career
+  const nextGame = {
+    ...game,
+    playerTeam: player,
+    teams: aiTeams,
+    entries,
+    raceIndex: game.raceIndex + 1,
+    archive: {
+      ...game.archive,
+      currentSeasonRaces: [...game.archive.currentSeasonRaces, raceRecord]
     },
+    career
+  };
+  return {
+    game: nextGame,
     summary: {
-      result: playerResult,
+      result: playerResults[0],
+      results: playerResults,
+      teamResults: playerTeamResults,
       items,
       net,
       prize,
@@ -240,7 +425,12 @@ export const applyRaceResults = (game, report) => {
       confDelta,
       confidence: career.confidence,
       expiredSponsors,
-      pointsTotal: player.points
+      // Pontos acumulados: por equipe em cada classe e por carro
+      teamPoints: Object.fromEntries(Object.keys(player.programs).map(cls => [cls, player.programs[cls].points])),
+      pointsTotals: myCars.map(entry => {
+        const updated = entries.find(item => item.id === entry.id);
+        return { id: entry.id, number: entry.number, class: entry.class, points: updated.points };
+      })
     }
   };
 };

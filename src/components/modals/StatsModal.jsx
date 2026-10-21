@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Trophy
 } from "lucide-react";
+import { isPlayerId } from "../../engine/team";
 
 const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
   const [selectedYear, setSelectedYear] = useState(currentSeason);
@@ -31,14 +32,18 @@ const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
       seasonData
         ? {
             ...seasonData,
-            standings: seasonData.standings
+            standings: (seasonData.standings || [])
               .filter(item => item.class === classFilter)
-              .sort((a, b) => b.points - a.points),
-            races: seasonData.races.map(race => ({
+              .sort((a, b) => (b.points || 0) - (a.points || 0)),
+            // Arquivos antigos não têm vencedor por equipe nem resultado de equipe do jogador
+            races: (seasonData.races || []).map(race => ({
               ...race,
               displayWinner: classFilter === "HYPERCAR" ? race.winner : race.gt3Winner,
-              displayPodium: classFilter === "HYPERCAR" ? race.podium : race.gt3Podium || []
-            }))
+              displayPodium: (classFilter === "HYPERCAR" ? race.podium : race.gt3Podium) || [],
+              displayTeamWinner: race.teamWinners?.[classFilter],
+              displayPlayerTeam: race.playerTeams?.[classFilter]
+            })),
+            carChampion: seasonData.carChampions?.[classFilter]
           }
         : null,
     [seasonData, classFilter]
@@ -60,9 +65,9 @@ const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
       }
     };
     archive.history.forEach(season => {
-      const classStandings = season.standings
+      const classStandings = (season.standings || [])
         .filter(item => item.class === classFilter)
-        .sort((a, b) => b.points - a.points);
+        .sort((a, b) => (b.points || 0) - (a.points || 0));
       if (classStandings.length > 0) {
         const champion = classStandings[0];
         stats[champion.id] ||= {
@@ -75,7 +80,7 @@ const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
         };
         stats[champion.id].titles += 1;
       }
-      season.standings.forEach(addTeamStats);
+      (season.standings || []).forEach(addTeamStats);
     });
     currentStandings.forEach(addTeamStats);
     return Object.values(stats);
@@ -84,12 +89,19 @@ const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
     () => [...careerStats].sort((a, b) => b[rankingSort] - a[rankingSort]),
     [careerStats, rankingSort]
   );
-  const playerCareer = careerStats.find(season => season.id === "player") || {
-    name: "Player",
-    wins: 0,
-    podiums: 0,
-    titles: 0
-  };
+  // Equipe do jogador na classe filtrada (arquivos antigos podem ter uma linha por carro: soma as linhas)
+  const playerCareer = careerStats
+    .filter(item => isPlayerId(item.id))
+    .reduce(
+      (total, item) => ({
+        name: total.name || item.name,
+        wins: total.wins + item.wins,
+        podiums: total.podiums + item.podiums,
+        titles: total.titles + item.titles
+      }),
+      { name: null, wins: 0, podiums: 0, titles: 0 }
+    );
+  playerCareer.name ||= "Player";
   if (filteredSeason) {
     return (
       <div className="fixed inset-0 bg-gray-950/95 z-50 overflow-y-auto flex items-start md:items-center justify-center p-0 md:p-4">
@@ -167,8 +179,13 @@ const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
               {activeTab === "standings" && (
                 <div>
                   <h3 className="text-lg md:text-xl font-bold mb-4 flex items-center gap-2 px-2 md:px-0">
-                    <Trophy className="text-yellow-500" size={20} /> Mundial de Construtores ({classFilter})
+                    <Trophy className="text-yellow-500" size={20} /> Campeonato de Equipes ({classFilter})
                   </h3>
+                  {filteredSeason.carChampion && (
+                    <p className="text-xs text-gray-400 mb-3 px-2 md:px-0">
+                      Campeões de pilotos: <span className="font-bold text-gray-200">{filteredSeason.carChampion}</span>
+                    </p>
+                  )}
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse min-w-[500px]">
                       <thead>
@@ -183,17 +200,22 @@ const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
                       <tbody>
                         {filteredSeason.standings.map((item, index) => (
                           <tr
-                            className={`border-b border-gray-800 hover:bg-gray-800/50 ${item.id === "player" ? "bg-blue-900/10" : ""}`}
-                            key={index}
+                            className={`border-b border-gray-800 hover:bg-gray-800/50 ${isPlayerId(item.id) ? "bg-blue-900/10" : ""}`}
+                            key={`${item.id}-${index}`}
                           >
                             <td className="p-3 font-mono text-gray-400 text-sm">{index + 1}</td>
                             <td
-                              className={`p-3 font-bold text-sm ${item.id === "player" ? "text-blue-400" : "text-gray-200"}`}
+                              className={`p-3 font-bold text-sm ${isPlayerId(item.id) ? "text-blue-400" : "text-gray-200"}`}
                             >
                               {item.name}
+                              {(item.number || item.numbers?.length > 0) && (
+                                <span className="ml-2 text-[10px] font-mono text-gray-500">
+                                  #{item.number ? String(item.number).split("/").join("/#") : item.numbers.join("/#")}
+                                </span>
+                              )}
                             </td>
                             <td className="p-3 text-right font-mono font-bold text-yellow-500">
-                              {item.points}
+                              {item.points || 0}
                             </td>
                             <td className="p-3 text-right text-gray-400 text-sm">{item.stats?.wins || 0}</td>
                             <td className="p-3 text-right text-gray-400 text-sm">
@@ -232,6 +254,20 @@ const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
                               {item.displayWinner || "N/A"}
                             </span>
                           </div>
+                          {item.displayTeamWinner && (
+                            <div className="flex justify-between items-center px-2 text-xs">
+                              <span className="text-gray-500">Equipe</span>
+                              <span className="font-bold text-gray-300 truncate max-w-[150px]">{item.displayTeamWinner}</span>
+                            </div>
+                          )}
+                          {item.displayPlayerTeam && (
+                            <div className="flex justify-between items-center px-2 text-xs">
+                              <span className="text-blue-400 font-bold">Sua equipe</span>
+                              <span className="font-bold text-blue-300">
+                                {item.displayPlayerTeam.position ? `${item.displayPlayerTeam.position}º` : "—"} · {item.displayPlayerTeam.points ?? 0} pts
+                              </span>
+                            </div>
+                          )}
                           {item.displayPodium && item.displayPodium.length > 1 && (
                             <div className="flex justify-between px-1">
                               <span className="text-gray-500 text-[10px]">
@@ -374,17 +410,17 @@ const StatsModal = ({ archive, currentSeason, currentStandings, onClose }) => {
                         <tbody>
                           {sortedRanking.slice(0, 10).map((item, index) => (
                             <tr
-                              className={`border-b border-gray-800 ${item.id === "player" ? "bg-blue-900/20" : "hover:bg-gray-800/30"}`}
+                              className={`border-b border-gray-800 ${isPlayerId(item.id) ? "bg-blue-900/20" : "hover:bg-gray-800/30"}`}
                               key={item.id}
                             >
                               <td className="p-3 text-center font-mono font-bold text-gray-500">
                                 {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : index + 1}
                               </td>
                               <td
-                                className={`p-3 font-bold text-sm ${item.id === "player" ? "text-blue-400" : "text-gray-200"}`}
+                                className={`p-3 font-bold text-sm ${isPlayerId(item.id) ? "text-blue-400" : "text-gray-200"}`}
                               >
                                 {item.name}
-                                {item.id === "player" && (
+                                {isPlayerId(item.id) && (
                                   <span className="ml-2 text-[10px] bg-blue-900 text-blue-200 px-1 rounded">
                                     VOCÊ
                                   </span>

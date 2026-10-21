@@ -255,6 +255,9 @@ const FCY_SPEED = 36;
 
 export const classLabel = cls => (cls === "HYPERCAR" ? "HYP" : "GT3");
 
+// Nome do carro nos eventos (equipes têm até dois carros por classe)
+export const carName = car => `${car.teamName} #${car.number}`;
+
 const pushEvent = (s, text, type = "info", extra = {}) => {
   s.events.push({
     t: s.elapsed,
@@ -391,7 +394,7 @@ const retire = (s, car, reason) => {
   car.dnfReason = reason;
   car.speed = 0;
   car.boxRequested = false;
-  pushEvent(s, `💥 ${car.teamName} (${classLabel(car.class)}): ${reason}! (DNF)`, "incident", { teamId: car.teamId, important: true });
+  pushEvent(s, `💥 ${carName(car)} (${classLabel(car.class)}): ${reason}! (DNF)`, "incident", { entryId: car.entryId, important: true });
 };
 
 const completeLap = (s, car, ctx, speed) => {
@@ -409,22 +412,24 @@ const completeLap = (s, car, ctx, speed) => {
     const fastest = s.fastestLaps[car.class];
     if (!fastest || lapTime < fastest.time) {
       s.fastestLaps[car.class] = {
+        entryId: car.entryId,
         teamId: car.teamId,
         teamName: car.teamName,
+        number: car.number,
         driver: car.drivers[car.currentDriverIdx].name,
         time: lapTime,
         lap: car.laps
       };
       if (car.laps > 3) {
-        pushEvent(s, `⏱️ Volta mais rápida (${classLabel(car.class)}): ${car.teamName} — ${formatLapTime(toDisplayTime(lapTime, ctx.track))}`, "fastest", {
-          teamId: car.teamId,
+        pushEvent(s, `⏱️ Volta mais rápida (${classLabel(car.class)}): ${carName(car)} — ${formatLapTime(toDisplayTime(lapTime, ctx.track))}`, "fastest", {
+          entryId: car.entryId,
           important: car.isPlayer
         });
       }
     }
   }
   car.pitThisLap = false;
-  if (s.neutral?.type === "SC" && car.teamId === ctx.leaderId) {
+  if (s.neutral?.type === "SC" && car.entryId === ctx.leaderId) {
     s.neutral.lapsLeft -= 1;
     if (s.neutral.lapsLeft <= 0) {
       s.neutral = null;
@@ -433,7 +438,7 @@ const completeLap = (s, car, ctx, speed) => {
   }
   if (!s.checkered && car.laps >= s.totalLaps) {
     s.checkered = true;
-    pushEvent(s, `🏁 Bandeira quadriculada! ${car.teamName} cruza a linha na frente.`, "finish", { important: true });
+    pushEvent(s, `🏁 Bandeira quadriculada! ${carName(car)} cruza a linha na frente.`, "finish", { important: true });
   }
   if (s.checkered) {
     car.finished = true;
@@ -460,11 +465,11 @@ const driverError = (s, car, ctx) => {
   const roll = Math.random();
   if (roll < 0.7) {
     car.stall = randRange(2, 5);
-    pushEvent(s, `↪️ ${name} (${car.teamName}) escapa da pista e perde tempo.`, "incident", { teamId: car.teamId, important: car.isPlayer });
+    pushEvent(s, `↪️ ${name} (${carName(car)}) escapa da pista e perde tempo.`, "incident", { entryId: car.entryId, important: car.isPlayer });
   } else if (roll < 0.92) {
     car.stall = randRange(6, 14);
     car.damage = Math.min(100, car.damage + randInt(0, 8));
-    pushEvent(s, `🌀 ${name} (${car.teamName}) roda na pista!`, "incident", { teamId: car.teamId, important: relevant });
+    pushEvent(s, `🌀 ${name} (${carName(car)}) roda na pista!`, "incident", { entryId: car.entryId, important: relevant });
     ctx.incidents.push("minor");
   } else {
     const hit = randInt(25, 70);
@@ -475,7 +480,7 @@ const driverError = (s, car, ctx) => {
       ctx.incidents.push("crash");
       return;
     }
-    pushEvent(s, `💥 Batida! ${name} (${car.teamName}) danifica o carro.`, "incident", { teamId: car.teamId, important: true });
+    pushEvent(s, `💥 Batida! ${name} (${carName(car)}) danifica o carro.`, "incident", { entryId: car.entryId, important: true });
     ctx.incidents.push(hit > 45 ? "crash" : "minor");
   }
 };
@@ -483,14 +488,15 @@ const driverError = (s, car, ctx) => {
 // Disputa com o carro imediatamente à frente na pista
 const interact = (s, car, speed, ctx) => {
   car.heldUp = false;
-  const info = ctx.aheadOf.get(car.teamId);
+  const info = ctx.aheadOf.get(car.entryId);
   if (!info || info.gap > 25) {
     return speed;
   }
   const ahead = info.ahead;
   const aheadSpeed = ahead.speed > 1 ? ahead.speed : ahead.pace;
   if (car.class === "HYPERCAR" && ahead.cls === "LMGT3") {
-    return speed * 0.975;
+    // O seu próprio GT3 abre caminho para o seu Hypercar
+    return speed * (car.isPlayer && ahead.isPlayer ? 0.992 : 0.975);
   }
   if (car.class !== ahead.cls) {
     return speed;
@@ -501,6 +507,11 @@ const interact = (s, car, speed, ctx) => {
   }
   if (speed <= aheadSpeed) {
     return speed;
+  }
+  // Ordens de equipe: os seus carros da mesma classe não disputam posição entre si
+  if (car.isPlayer && ahead.isPlayer && s.teamOrders?.[car.class] === "HOLD") {
+    car.heldUp = true;
+    return Math.min(speed, aheadSpeed);
   }
   const myDriver = driverPaceRating(car.drivers[car.currentDriverIdx], s.trackWetness);
   const delta = (speed - aheadSpeed) / aheadSpeed;
@@ -514,12 +525,12 @@ const interact = (s, car, speed, ctx) => {
   }
   chance = clamp(chance, 0, 0.25);
   if (Math.random() < chance) {
-    ctx.passes.push({ passerId: car.teamId, passedId: ahead.teamId });
+    ctx.passes.push({ passerId: car.entryId, passedId: ahead.entryId });
     return speed;
   }
   if (Math.random() < 0.0008) {
     car.damage = Math.min(100, car.damage + randInt(3, 15));
-    pushEvent(s, `💢 Toque! ${car.teamName} encosta em ${ahead.teamName} na disputa.`, "incident", { teamId: car.teamId, important: car.isPlayer });
+    pushEvent(s, `💢 Toque! ${carName(car)} encosta em ${carName(ahead)} na disputa.`, "incident", { entryId: car.entryId, important: car.isPlayer });
     ctx.incidents.push("minor");
   }
   car.heldUp = true;
@@ -571,8 +582,8 @@ const enterPit = (s, car) => {
   car.boxRequested = false;
   car.forcedPit = false;
   car.pitPlan = null;
-  pushEvent(s, `⬇️ BOX: ${car.teamName} — ${notes.join(", ")} (${toDisplayTime(car.pitTimer, s.track).toFixed(0)}s)${error ? " — erro no pit stop!" : ""}`, "pit", {
-    teamId: car.teamId,
+  pushEvent(s, `⬇️ BOX: ${carName(car)} — ${notes.join(", ")} (${toDisplayTime(car.pitTimer, s.track).toFixed(0)}s)${error ? " — erro no pit stop!" : ""}`, "pit", {
+    entryId: car.entryId,
     important: car.isPlayer
   });
 };
@@ -586,7 +597,7 @@ const updatePitCar = (s, car, ctx) => {
     car.pitTimer = 0;
     car.speed = 60;
     if (car.isPlayer) {
-      pushEvent(s, `⬆️ ${car.teamName} retorna à pista.`, "pit", { teamId: car.teamId, important: true });
+      pushEvent(s, `⬆️ ${carName(car)} retorna à pista.`, "pit", { entryId: car.entryId, important: true });
     }
   }
 };
@@ -615,7 +626,7 @@ const updateRunningCar = (s, car, ctx) => {
     if (!car.pitPlan) {
       car.pitPlan = car.isPlayer && !car.autoStrategy ? { tyres: null, driverSwap: null, repair: true } : computeAutoPlan(car, s);
     }
-    pushEvent(s, `🔧 ${car.teamName}: problema mecânico! Volta lenta para os boxes.`, "incident", { teamId: car.teamId, important: true });
+    pushEvent(s, `🔧 ${carName(car)}: problema mecânico! Volta lenta para os boxes.`, "incident", { entryId: car.entryId, important: true });
   }
 
   // Erro do piloto
@@ -663,7 +674,7 @@ const updateRunningCar = (s, car, ctx) => {
   if (neutral?.type === "FCY") {
     speed = Math.min(speed, FCY_SPEED);
   } else if (neutral?.type === "SC") {
-    speed = Math.min(speed, ctx.scSpeeds?.get(car.teamId) ?? SC_SPEED);
+    speed = Math.min(speed, ctx.scSpeeds?.get(car.entryId) ?? SC_SPEED);
   } else {
     speed = interact(s, car, speed, ctx);
   }
@@ -727,19 +738,20 @@ const updateRunningCar = (s, car, ctx) => {
       ...(car.pitPlan || {}),
       tyres: car.pitPlan?.tyres || (wetness > 40 ? "WET" : "MEDIUM")
     };
-    pushEvent(s, `💥 Pneu furado! ${car.teamName} volta devagar para os boxes.`, "incident", { teamId: car.teamId, important: true });
+    pushEvent(s, `💥 Pneu furado! ${carName(car)} volta devagar para os boxes.`, "incident", { entryId: car.entryId, important: true });
   }
   car.damageTaken = car.damage > damageBefore ? car.damage - damageBefore : 0;
 };
 
-const playerRadio = (s, car) => {
+const playerRadio = (s, car, multi = false) => {
   const say = (key, text, tone, cooldown = 180) => {
-    const last = s.radioMemo[key];
+    const memoKey = `${car.entryId}:${key}`;
+    const last = s.radioMemo[memoKey];
     if (last != null && s.elapsed - last < cooldown) {
       return;
     }
-    s.radioMemo[key] = s.elapsed;
-    s.radio.push({ t: s.elapsed, lap: Math.min(s.totalLaps, car.laps + 1), text, tone });
+    s.radioMemo[memoKey] = s.elapsed;
+    s.radio.push({ t: s.elapsed, lap: Math.min(s.totalLaps, car.laps + 1), text: multi ? `#${car.number}: ${text}` : text, tone, entryId: car.entryId });
     if (s.radio.length > MAX_RADIO) {
       s.radio.shift();
     }
@@ -811,6 +823,39 @@ const playerRadio = (s, car) => {
   }
 };
 
+// Carros do jogador numa classe (para ordens de equipe)
+const playerPair = (grid, cls) => grid.filter(car => car.isPlayer && car.class === cls);
+
+// Rádio do muro quando os dois carros da equipe andam juntos na mesma classe
+const teamRadio = (s, players) => {
+  ["HYPERCAR", "LMGT3"].forEach(cls => {
+    const pair = players.filter(car => car.class === cls);
+    if (pair.length < 2) {
+      return;
+    }
+    const [a, b] = pair;
+    if (a.status !== "RUN" || b.status !== "RUN" || a.finished || b.finished) {
+      return;
+    }
+    const close = Math.abs(a.distance - b.distance) < 60 && a.laps === b.laps;
+    const key = `team:battle:${cls}`;
+    const last = s.radioMemo[key];
+    if (close && s.teamOrders?.[cls] !== "HOLD" && (last == null || s.elapsed - last > 400) && s.elapsed > 120) {
+      s.radioMemo[key] = s.elapsed;
+      s.radio.push({
+        t: s.elapsed,
+        lap: Math.min(s.totalLaps, Math.max(a.laps, b.laps) + 1),
+        text: `Muro: #${a.number} e #${b.number} estão brigando roda a roda! Quer dar ordem de equipe?`,
+        tone: "warn",
+        entryId: null
+      });
+      if (s.radio.length > MAX_RADIO) {
+        s.radio.shift();
+      }
+    }
+  });
+};
+
 // Avança 1 segundo de corrida (muta o estado recebido, que deve ser uma cópia)
 const tick = s => {
   if (s.finished) {
@@ -837,13 +882,15 @@ const tick = s => {
   // Foto da pista antes de mover: quem está à frente de quem
   const movers = s.grid.filter(car => car.status === "RUN" && !car.finished);
   const snapshot = movers.map(car => ({
-    teamId: car.teamId,
+    entryId: car.entryId,
     teamName: car.teamName,
+    number: car.number,
     distance: car.distance,
     posMod: ((car.distance % L) + L) % L,
     speed: car.speed / 3.6,
     pace: car.pace,
     cls: car.class,
+    isPlayer: car.isPlayer,
     strategy: car.strategy,
     driverPace: driverPaceRating(car.drivers[car.currentDriverIdx], s.trackWetness)
   }));
@@ -852,13 +899,13 @@ const tick = s => {
   if (physical.length > 1) {
     physical.forEach((car, i) => {
       const ahead = physical[(i - 1 + physical.length) % physical.length];
-      aheadOf.set(car.teamId, { ahead, gap: (ahead.posMod - car.posMod + L) % L });
+      aheadOf.set(car.entryId, { ahead, gap: (ahead.posMod - car.posMod + L) % L });
     });
   }
   let scSpeeds = null;
   if (s.neutral?.type === "SC" && movers.length) {
     const leader = snapshot.reduce((best, car) => (car.distance > best.distance ? car : best), snapshot[0]);
-    const train = snapshot.map(car => ({ id: car.teamId, d: (leader.posMod - car.posMod + L) % L })).sort((a, b) => a.d - b.d);
+    const train = snapshot.map(car => ({ id: car.entryId, d: (leader.posMod - car.posMod + L) % L })).sort((a, b) => a.d - b.d);
     scSpeeds = new Map();
     train.forEach((car, i) => {
       if (i === 0) {
@@ -877,7 +924,7 @@ const tick = s => {
     scSpeeds,
     passes: [],
     incidents: [],
-    leaderId: leaderBefore?.teamId
+    leaderId: leaderBefore?.entryId
   };
 
   for (const car of s.grid) {
@@ -893,8 +940,8 @@ const tick = s => {
 
   // Ultrapassagens concluídas neste segundo
   ctx.passes.forEach(({ passerId, passedId }) => {
-    const passer = s.grid.find(car => car.teamId === passerId);
-    const passed = s.grid.find(car => car.teamId === passedId);
+    const passer = s.grid.find(car => car.entryId === passerId);
+    const passed = s.grid.find(car => car.entryId === passedId);
     if (!passer || !passed || passer.status !== "RUN" || passed.status !== "RUN" || passer.finished || passed.finished) {
       return;
     }
@@ -902,8 +949,8 @@ const tick = s => {
       moveCar(s, passer, passed.distance + 2, ctx);
       passer.overtakes = (passer.overtakes || 0) + 1;
       if (passer.isPlayer || passed.isPlayer || passed.classPosition <= 3) {
-        pushEvent(s, `🔄 ${passer.teamName} ultrapassa ${passed.teamName} pela P${passed.classPosition} (${classLabel(passed.class)}).`, "overtake", {
-          teamId: passer.teamId,
+        pushEvent(s, `🔄 ${carName(passer)} ultrapassa ${carName(passed)} pela P${passed.classPosition} (${classLabel(passed.class)}).`, "overtake", {
+          entryId: passer.entryId,
           important: passer.isPlayer || passed.isPlayer
         });
       }
@@ -915,10 +962,9 @@ const tick = s => {
   s.grid = rankGrid(s.grid);
   assignPositions(s.grid);
 
-  const player = s.grid.find(car => car.isPlayer);
-  if (player) {
-    playerRadio(s, player);
-  }
+  const players = s.grid.filter(car => car.isPlayer);
+  players.forEach(car => playerRadio(s, car, players.length > 1));
+  teamRadio(s, players);
 
   if (s.checkered && s.grid.every(car => car.status === "DNF" || car.finished)) {
     s.finished = true;
@@ -971,20 +1017,73 @@ export const simulateToEnd = state => {
 // Comandos do jogador durante a corrida
 // ---------------------------------------------------------------------------
 
-const updatePlayer = (state, update) => ({
-  ...state,
-  grid: state.grid.map(car => (car.isPlayer ? { ...car, ...update(car) } : car))
-});
+// entryId escolhe qual dos carros do jogador recebe o comando (padrão: o primeiro)
+const updatePlayer = (state, update, entryId = null) => {
+  const target = entryId ?? state.grid.find(car => car.isPlayer)?.entryId;
+  return {
+    ...state,
+    grid: state.grid.map(car => (car.isPlayer && car.entryId === target ? { ...car, ...update(car) } : car))
+  };
+};
 
-export const requestPitStop = (state, plan) =>
-  updatePlayer(state, car => (car.status === "RUN" && !car.finished ? { boxRequested: true, pitPlan: { ...plan } } : {}));
+export const requestPitStop = (state, plan, entryId) =>
+  updatePlayer(state, car => (car.status === "RUN" && !car.finished ? { boxRequested: true, pitPlan: { ...plan } } : {}), entryId);
 
-export const cancelPitStop = state => updatePlayer(state, car => (car.forcedPit ? {} : { boxRequested: false, pitPlan: null }));
+export const cancelPitStop = (state, entryId) => updatePlayer(state, car => (car.forcedPit ? {} : { boxRequested: false, pitPlan: null }), entryId);
 
-export const setPlayerStrategy = (state, strategy) => updatePlayer(state, () => ({ strategy }));
+export const setPlayerStrategy = (state, strategy, entryId) => updatePlayer(state, () => ({ strategy }), entryId);
 
-export const setPlayerAutoStrategy = (state, enabled) =>
-  updatePlayer(state, car => ({
-    autoStrategy: enabled,
-    ...(enabled ? {} : car.forcedPit ? {} : { boxRequested: false, pitPlan: null })
-  }));
+export const setPlayerAutoStrategy = (state, enabled, entryId) =>
+  updatePlayer(
+    state,
+    car => ({
+      autoStrategy: enabled,
+      ...(enabled ? {} : car.forcedPit ? {} : { boxRequested: false, pitPlan: null })
+    }),
+    entryId
+  );
+
+// Ordens de equipe por classe ("FREE" ou "HOLD")
+export const setTeamOrders = (state, cls, orders) => {
+  const players = playerPair(state.grid, cls);
+  const text =
+    orders === "HOLD"
+      ? `Ordem de equipe: ${players.map(car => `#${car.number}`).join(" e ")} mantêm as posições.`
+      : `Ordem de equipe retirada: disputa livre entre ${players.map(car => `#${car.number}`).join(" e ")}.`;
+  return {
+    ...state,
+    teamOrders: { ...state.teamOrders, [cls]: orders },
+    radio: [...state.radio, { t: state.elapsed, lap: state.leaderLap, text: `Muro: ${text}`, tone: "info", entryId: null }].slice(-MAX_RADIO)
+  };
+};
+
+// Ordem de equipe pontual: o carro de trás passa o da frente (se estiverem perto, na mesma volta e classe)
+export const canSwapTeamCars = (state, cls) => {
+  const players = playerPair(state.grid, cls);
+  if (players.length < 2) {
+    return false;
+  }
+  const [a, b] = players;
+  return a.status === "RUN" && b.status === "RUN" && !a.finished && !b.finished && a.laps === b.laps && Math.abs(a.distance - b.distance) < 150;
+};
+
+export const swapTeamCars = (state, cls) => {
+  if (!canSwapTeamCars(state, cls)) {
+    return state;
+  }
+  const s = cloneRaceState(state);
+  const [front, back] = playerPair(s.grid, cls).sort((a, b) => b.distance - a.distance);
+  const frontDistance = front.distance;
+  front.distance = back.distance - 3;
+  back.distance = frontDistance;
+  front.lapProgressPct = (((front.distance % s.track.length) + s.track.length) % s.track.length) / s.track.length;
+  back.lapProgressPct = (((back.distance % s.track.length) + s.track.length) % s.track.length) / s.track.length;
+  s.grid = rankGrid(s.grid);
+  assignPositions(s.grid);
+  pushEvent(s, `🔁 Ordem de equipe: #${front.number} abre passagem para #${back.number}.`, "overtake", { entryId: back.entryId, important: true });
+  s.radio.push({ t: s.elapsed, lap: s.leaderLap, text: `Muro: #${front.number}, deixe o #${back.number} passar. Obrigado!`, tone: "info", entryId: null });
+  if (s.radio.length > MAX_RADIO) {
+    s.radio.shift();
+  }
+  return s;
+};

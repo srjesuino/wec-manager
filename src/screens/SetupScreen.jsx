@@ -4,13 +4,15 @@ import {
   ArrowRight,
   CircleAlert,
   CircleCheckBig,
+  Copy,
   MessageSquare,
   Settings,
   ThumbsDown,
   ThumbsUp
 } from "lucide-react";
-import { TRACK_TYPE_LABELS } from "../data/constants";
+import { TRACK_TYPE_LABELS, CLASS_RULES } from "../data/constants";
 import { setupAttempts } from "../engine/weekend";
+import { playerEntries } from "../engine/team";
 
 // Engenheiro 3+ estrelas diz o tamanho do ajuste; 4+ estrelas dá uma estimativa em pontos
 const engineerDetail = (diff, stars) => {
@@ -22,7 +24,9 @@ const engineerDetail = (diff, stars) => {
   return stars >= 4 ? ` [${size}, ~${Math.round(absDiff / 5) * 5} pts ${diff > 0 ? "a menos" : "a mais"}]` : ` [${size}]`;
 };
 
-const SetupScreen = ({ game, weekend, onSetupComplete }) => {
+const SetupScreen = ({ game, weekend, entry, copyFrom = null, onSetupComplete }) => {
+  const car = entry || playerEntries(game)[0];
+  const multiCar = playerEntries(game).length > 1;
   const teamName = game.playerTeam.name;
   const trackName = weekend.track.name;
   const trackType = weekend.track.type;
@@ -196,6 +200,11 @@ const SetupScreen = ({ game, weekend, onSetupComplete }) => {
               {TRACK_TYPE_LABELS[trackType] || trackType}
             </span>
             <span className="text-xs font-bold text-gray-500 uppercase">{teamName}</span>
+            {multiCar && (
+              <span className={`text-xs font-black px-2 py-1 rounded ${car.class === "HYPERCAR" ? "bg-red-900 text-red-200" : "bg-yellow-900 text-yellow-200"}`}>
+                Carro #{car.number} · {CLASS_RULES[car.class]?.label ?? car.class}
+              </span>
+            )}
           </div>
           <h1 className="text-3xl md:text-4xl font-black italic text-white uppercase flex items-center gap-2">
             <Settings className="text-blue-500" size={32} /> SETUP BOX
@@ -267,6 +276,19 @@ const SetupScreen = ({ game, weekend, onSetupComplete }) => {
             <MessageSquare size={18} />
             {attemptsLeft <= 0 ? "SEM TENTATIVAS" : "CONSULTAR PILOTO"}
           </button>
+          {copyFrom && (
+            <button
+              onClick={() => onSetupComplete(copyFrom.score)}
+              disabled={isConfirming}
+              title="Usa os dados do carro irmão: rápido, mas menos preciso que um acerto próprio."
+              className="flex-1 font-bold py-4 rounded-xl flex flex-col items-center justify-center transition-all active:scale-95 border bg-gray-800 hover:bg-gray-700 text-white border-gray-600"
+            >
+              <span className="flex items-center gap-2">
+                <Copy size={18} /> Usar dados do #{copyFrom.number} (~{Math.round(copyFrom.score)}%)
+              </span>
+              <span className="text-[10px] text-gray-400 font-normal">Dados do carro irmão, menos precisos</span>
+            </button>
+          )}
           <button
             onClick={confirmSetup}
             disabled={isConfirming}

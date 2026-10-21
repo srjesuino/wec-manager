@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
-import { GAME_VERSION, SAVE_KEY, TRACKS, FACILITIES, FACILITY_MAX_LEVEL, STAFF_ROLES, PART_LABELS } from "./data/constants";
+import { GAME_VERSION, SAVE_KEY, TRACKS, FACILITIES, FACILITY_MAX_LEVEL, STAFF_ROLES, PART_LABELS, CLASSES, CLASS_RULES } from "./data/constants";
 import { formatMoney, generateId } from "./utils/helpers";
 import { fetchAiMediaFeed, buildRaceContext, generateRaceMedia } from "./utils/mediaEngine";
 import { createNewGame, migrateSave } from "./engine/newGame";
-import { applyBop, createWeekend, computeQualifying, createRaceState } from "./engine/weekend";
+import { applyBop, createWeekend, computeQualifying, createRaceState, entrySetupScore } from "./engine/weekend";
 import {
   advanceRace,
   simulateToEnd,
   requestPitStop,
   cancelPitStop,
   setPlayerStrategy,
-  setPlayerAutoStrategy
+  setPlayerAutoStrategy,
+  setTeamOrders,
+  swapTeamCars
 } from "./engine/race";
 import { buildRaceReport, applyRaceResults } from "./engine/results";
 import { buildSeasonSummary, startNextSeason } from "./engine/season";
+import { teamStandings } from "./engine/career";
 import {
   PART_CAP,
   UPGRADE_STEP,
-  upgradeCost,
+  usesToken,
   bonusUpgradeChance,
   facilityUpgradeCost,
   staffHiringFee,
@@ -28,6 +31,8 @@ import {
   sponsorSlots
 } from "./engine/economy";
 import { signDriverTo } from "./engine/drivers";
+import { entryById, playerEntries, programUpgradeCost, canUseToken, mainClass, gridViews, carsInProgram, PLAYER_ID } from "./engine/team";
+import { sandboxCreateTeam, sandboxUpdateTeam, sandboxDeleteTeam } from "./engine/sandbox";
 import MenuScreen from "./screens/MenuScreen";
 import DashboardScreen from "./screens/DashboardScreen";
 import BriefingScreen from "./screens/BriefingScreen";
@@ -36,7 +41,6 @@ import QualifyingScreen from "./screens/QualifyingScreen";
 import RaceScreen from "./screens/RaceScreen";
 import RaceResultsScreen from "./screens/RaceResultsScreen";
 import SeasonEndScreen from "./screens/SeasonEndScreen";
-import FiredScreen from "./screens/FiredScreen";
 import Toasts from "./components/ui/Toasts";
 import StatsModal from "./components/modals/StatsModal";
 import HelpModal from "./components/modals/HelpModal";
@@ -51,8 +55,9 @@ function App() {
   const [weekend, setWeekend] = useState(null);
   const [raceState, setRaceState] = useState(null);
   const [raceResult, setRaceResult] = useState(null);
+  // Carro do jogador em foco no setup e na classificação (id do carro)
+  const [weekendCar, setWeekendCar] = useState(null);
   const [seasonSummary, setSeasonSummary] = useState(null);
-  const [firedSummary, setFiredSummary] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [modal, setModal] = useState(null);
   const [toasts, setToasts] = useState([]);
@@ -188,29 +193,50 @@ function App() {
     setActiveTab("overview");
     setScreen("dashboard");
     notify(`WEC Temporada ${newGame.season}. Grid multiclasse definido!`, "success");
-    notify(`Meta da diretoria: ${newGame.career.objective.text}.`);
+    Object.values(newGame.career.objectives).forEach(objective => notify(`Meta do conselho: ${objective.text}.`));
   };
 
   // -------------------------------------------------------------------------
   // Gestão
   // -------------------------------------------------------------------------
   const updatePlayer = update => setGame(g => ({ ...g, playerTeam: { ...g.playerTeam, ...update(g.playerTeam) } }));
+  const updateEntries = (g, fn) => ({ ...g, entries: g.entries.map(fn) });
 
-  const buyUpgrade = part => {
+  // P&D do programa de uma classe (vale para todos os carros da equipe na classe)
+  const buyUpgrade = (part, cls) => {
     const team = game.playerTeam;
-    const cost = upgradeCost(team, part);
-    if (team.car[part] >= PART_CAP) {
+    const program = team.programs?.[cls];
+    if (!program || program.car[part] >= PART_CAP) {
       return;
     }
+    if (!canUseToken(team, cls, part)) {
+      notify("Sem fichas de homologação nesta temporada: a peça só pode evoluir na próxima.", "error");
+      return;
+    }
+    const cost = programUpgradeCost(game, team, cls, part);
     if (team.funds < cost) {
       notify("Fundos insuficientes para este upgrade.", "error");
       return;
     }
     const step = Math.random() < bonusUpgradeChance(team) ? UPGRADE_STEP + 1 : UPGRADE_STEP;
-    const level = Math.min(PART_CAP, team.car[part] + step);
-    updatePlayer(t => ({ funds: t.funds - cost, car: { ...t.car, [part]: level } }));
+    const level = Math.min(PART_CAP, program.car[part] + step);
+    setGame(g => {
+      const current = g.playerTeam.programs[cls];
+      return {
+        ...g,
+        playerTeam: {
+          ...g.playerTeam,
+          funds: g.playerTeam.funds - cost,
+          programs: {
+            ...g.playerTeam.programs,
+            [cls]: { ...current, car: { ...current.car, [part]: level }, devTokens: usesToken(part) ? Math.max(0, (current.devTokens ?? 0) - 1) : current.devTokens }
+          }
+        }
+      };
+    });
+    const label = Object.keys(team.programs).length > 1 || carsInProgram(game, PLAYER_ID, cls) > 1 ? ` (${CLASS_RULES[cls].label})` : "";
     notify(
-      `P&D: ${PART_LABELS[part]} ${team.car[part]} → ${level}${step > UPGRADE_STEP ? " (bônus do Diretor Técnico!)" : ""}. Saldo: ${formatMoney(team.funds - cost)}`,
+      `P&D${label}: ${PART_LABELS[part]} ${program.car[part]} → ${level}${step > UPGRADE_STEP ? " (bônus do Diretor Técnico!)" : ""}. Saldo: ${formatMoney(team.funds - cost)}`,
       "success"
     );
   };
@@ -221,7 +247,7 @@ function App() {
     if (level >= FACILITY_MAX_LEVEL) {
       return;
     }
-    const cost = facilityUpgradeCost(team.class, level);
+    const cost = facilityUpgradeCost(mainClass(team), level);
     if (team.funds < cost) {
       notify("Fundos insuficientes para ampliar esta instalação.", "error");
       return;
@@ -232,7 +258,7 @@ function App() {
 
   const hireStaff = (role, candidate) => {
     const team = game.playerTeam;
-    const fee = staffHiringFee(candidate.stars, team.class);
+    const fee = staffHiringFee(candidate.stars, mainClass(team));
     if (team.funds < fee) {
       notify("Fundos insuficientes para contratar.", "error");
       return;
@@ -248,10 +274,17 @@ function App() {
     notify(`${candidate.name} é o novo ${STAFF_ROLES[role].name}.`, "success");
   };
 
+  // Carro do jogador que tem o piloto
+  const entryWithDriver = (g, driverId) => playerEntries(g).find(entry => entry.drivers.some(d => d.id === driverId));
+
   const signDriver = (driver, replaceId) => {
     const team = game.playerTeam;
-    const fee = signingFee(driver, team.class);
-    const leaving = team.drivers.find(d => d.id === replaceId);
+    const entry = entryWithDriver(game, replaceId);
+    if (!entry) {
+      return;
+    }
+    const fee = signingFee(driver, entry.class);
+    const leaving = entry.drivers.find(d => d.id === replaceId);
     const penalty = leaving ? releaseCost(leaving, racesLeft(game)) : 0;
     if ((team.reputation ?? 0) < requiredReputation(driver)) {
       notify(`${driver.name} só aceita equipes com reputação ${requiredReputation(driver)}+.`, "error");
@@ -261,27 +294,56 @@ function App() {
       notify("Fundos insuficientes para esta contratação.", "error");
       return;
     }
-    const signed = signDriverTo(driver, team, 2);
+    const signed = signDriverTo(driver, entry, 2);
     setGame(g => {
-      const drivers = g.playerTeam.drivers.filter(d => d.id !== replaceId);
-      const lineup = leaving && g.playerTeam.drivers[0]?.id === replaceId ? [signed, ...drivers] : [...drivers, signed];
+      const withLineup = updateEntries(g, current => {
+        if (current.id !== entry.id) {
+          return current;
+        }
+        const drivers = current.drivers.filter(d => d.id !== replaceId);
+        return { ...current, drivers: current.drivers[0]?.id === replaceId ? [signed, ...drivers] : [...drivers, signed] };
+      });
       return {
-        ...g,
-        playerTeam: { ...g.playerTeam, funds: g.playerTeam.funds - fee - penalty, drivers: lineup },
-        driversPool: [
-          ...g.driversPool.filter(d => d.id !== driver.id),
-          ...(leaving ? [{ ...leaving, teamId: null, contractYears: 0 }] : [])
-        ]
+        ...withLineup,
+        playerTeam: { ...withLineup.playerTeam, funds: withLineup.playerTeam.funds - fee - penalty },
+        driversPool: [...g.driversPool.filter(d => d.id !== driver.id), ...(leaving ? [{ ...leaving, teamId: null, entryId: null, contractYears: 0 }] : [])]
       };
     });
-    notify(`Contratado: ${driver.name}${leaving ? ` (sai ${leaving.name})` : ""}.`, "success");
+    notify(`Contratado para o #${entry.number}: ${driver.name}${leaving ? ` (sai ${leaving.name})` : ""}.`, "success");
   };
 
   const setStarter = driverId => {
-    updatePlayer(t => {
-      const starter = t.drivers.find(d => d.id === driverId);
-      return { drivers: [starter, ...t.drivers.filter(d => d.id !== driverId)] };
+    setGame(g => {
+      const entry = entryWithDriver(g, driverId);
+      if (!entry) {
+        return g;
+      }
+      const starter = entry.drivers.find(d => d.id === driverId);
+      return updateEntries(g, current => (current.id === entry.id ? { ...current, drivers: [starter, ...current.drivers.filter(d => d.id !== driverId)] } : current));
     });
+  };
+
+  // Troca dois pilotos de carro; o salário de contrato não muda
+  const swapDrivers = (driverId, otherId) => {
+    const a = entryWithDriver(game, driverId);
+    const b = entryWithDriver(game, otherId);
+    if (!a || !b || a.id === b.id) {
+      return;
+    }
+    const driverA = a.drivers.find(d => d.id === driverId);
+    const driverB = b.drivers.find(d => d.id === otherId);
+    setGame(g =>
+      updateEntries(g, entry => {
+        if (entry.id === a.id) {
+          return { ...entry, drivers: entry.drivers.map(d => (d.id === driverId ? { ...driverB, entryId: a.id } : d)) };
+        }
+        if (entry.id === b.id) {
+          return { ...entry, drivers: entry.drivers.map(d => (d.id === otherId ? { ...driverA, entryId: b.id } : d)) };
+        }
+        return entry;
+      })
+    );
+    notify(`${driverA.name} vai para o #${b.number} e ${driverB.name} para o #${a.number}.`, "success");
   };
 
   const signSponsor = sponsor => {
@@ -294,9 +356,26 @@ function App() {
       notify(`${sponsor.name} exige reputação ${sponsor.minReputation}+.`, "error");
       return;
     }
-    const offer = sponsorOffer(sponsor, team.class);
+    const offer = sponsorOffer(sponsor, mainClass(team));
     updatePlayer(t => ({ funds: t.funds + offer.signingBonus, sponsors: [...t.sponsors, { ...offer, remaining: offer.duration }] }));
     notify(`Contrato assinado com ${sponsor.name}. Bônus: ${formatMoney(offer.signingBonus)}.`, "success");
+  };
+
+  // Editor de grid (sandbox)
+  const applySandbox = (result, message) => {
+    if (result.error) {
+      notify(result.error, "error");
+      return false;
+    }
+    setGame(result.game);
+    notify(message, "success");
+    return true;
+  };
+  const createTeam = options => applySandbox(sandboxCreateTeam(game, options), `${options.name} entra no grid da ${CLASS_RULES[options.cls]?.label}.`);
+  const editTeam = (teamId, patch) => applySandbox(sandboxUpdateTeam(game, teamId, patch), "Equipe atualizada.");
+  const deleteTeam = teamId => {
+    const team = game.teams.find(item => item.id === teamId);
+    return applySandbox(sandboxDeleteTeam(game, teamId), `${team?.name ?? "Equipe"} saiu do grid.`);
   };
 
   const markAllRead = () => {
@@ -315,23 +394,59 @@ function App() {
     const withBop = applyBop(game, TRACKS[game.raceIndex]);
     setGame(withBop);
     setWeekend(createWeekend(withBop));
+    setWeekendCar(playerEntries(withBop)[0]?.id ?? null);
     setScreen("briefing");
   };
 
+  // Próximo carro do jogador que ainda não fez a etapa (setup ou volta lançada)
+  const nextCarWithout = (key, next) => playerEntries(game).find(entry => next[key]?.[entry.id] == null);
+  const firstCarId = game ? playerEntries(game)[0]?.id : null;
+
   const onSetupComplete = score => {
-    setWeekend(w => ({ ...w, setupScore: score }));
-    notify(`Setup finalizado. Eficiência: ${score.toFixed(1)}%`);
+    const next = {
+      ...weekend,
+      setupScores: { ...weekend.setupScores, [weekendCar]: score },
+      ...(weekendCar === firstCarId ? { setupScore: score } : {})
+    };
+    setWeekend(next);
+    const label = playerEntries(game).length > 1 ? ` #${entryById(game, weekendCar)?.number}` : "";
+    notify(`Setup${label} finalizado. Eficiência: ${score.toFixed(1)}%`);
+    const pending = nextCarWithout("setupScores", next);
+    if (pending) {
+      setWeekendCar(pending.id);
+      return;
+    }
+    setWeekendCar(firstCarId);
     setScreen("qualy");
   };
 
   const onQualyComplete = score => {
-    const next = { ...weekend, qualyScore: score };
+    const next = {
+      ...weekend,
+      qualyScores: { ...weekend.qualyScores, [weekendCar]: score },
+      ...(weekendCar === firstCarId ? { qualyScore: score } : {})
+    };
+    const pending = nextCarWithout("qualyScores", next);
+    if (pending) {
+      setWeekend(next);
+      setWeekendCar(pending.id);
+      return;
+    }
     next.qualifying = computeQualifying(game, next);
     setWeekend(next);
   };
 
+  // Dados de setup de um carro irmão já acertado (mesma classe = mais confiáveis)
+  const setupCopyFor = entry => {
+    const done = playerEntries(game).filter(other => other.id !== entry.id && weekend?.setupScores?.[other.id] != null);
+    const options = done.map(other => ({ number: other.number, score: entrySetupScore(weekend, other.id) * (other.class === entry.class ? 0.92 : 0.75) }));
+    return options.sort((a, b) => b.score - a.score)[0] || null;
+  };
+
+  // startTyre: um composto para todos os carros ou { [id do carro]: composto }
   const startRace = startTyre => {
-    const next = { ...weekend, startTyre };
+    const tyres = typeof startTyre === "string" ? Object.fromEntries(playerEntries(game).map(entry => [entry.id, startTyre])) : startTyre;
+    const next = { ...weekend, startTyre: tyres[firstCarId] ?? weekend.startTyre, startTyres: tyres };
     setWeekend(next);
     setRaceState(createRaceState(game, next));
     setScreen("race");
@@ -342,16 +457,18 @@ function App() {
   // -------------------------------------------------------------------------
   const advance = useCallback(ticks => setRaceState(s => (s ? advanceRace(s, ticks) : s)), []);
   const simulateRest = () => setRaceState(simulateToEnd(raceState));
-  const requestPit = plan => setRaceState(s => requestPitStop(s, plan));
-  const cancelPit = () => setRaceState(s => cancelPitStop(s));
-  const changeStrategy = strategy => setRaceState(s => setPlayerStrategy(s, strategy));
-  const toggleAutoStrategy = enabled => setRaceState(s => setPlayerAutoStrategy(s, enabled));
+  const requestPit = (plan, entryId) => setRaceState(s => requestPitStop(s, plan, entryId));
+  const cancelPit = entryId => setRaceState(s => cancelPitStop(s, entryId));
+  const changeStrategy = (strategy, entryId) => setRaceState(s => setPlayerStrategy(s, strategy, entryId));
+  const toggleAutoStrategy = (enabled, entryId) => setRaceState(s => setPlayerAutoStrategy(s, enabled, entryId));
+  const changeTeamOrders = (cls, orders) => setRaceState(s => setTeamOrders(s, cls, orders));
+  const swapCars = cls => setRaceState(s => swapTeamCars(s, cls));
 
   const generateNews = (report, nextGame) => {
     setIsNewsLoading(true);
     setTimeout(async () => {
       try {
-        const allTeams = [nextGame.playerTeam, ...nextGame.aiTeams];
+        const allTeams = gridViews(nextGame);
         let media = null;
         if (nextGame.settings?.aiNews !== false) {
           media = await fetchAiMediaFeed(buildRaceContext(report, nextGame.playerTeam));
@@ -393,15 +510,9 @@ function App() {
   // -------------------------------------------------------------------------
   // Temporada
   // -------------------------------------------------------------------------
+  // decisions: { renew, cars: { HYPERCAR, LMGT3 }, numbers }
   const confirmSeasonEnd = decisions => {
     const result = startNextSeason(game, decisions);
-    if (result.fired) {
-      setFiredSummary({ ...result.summary, game });
-      localStorage.removeItem(SAVE_KEY);
-      setHasAutoSave(false);
-      setScreen("fired");
-      return;
-    }
     const nextGame = result.notes.length
       ? {
           ...result.game,
@@ -425,17 +536,17 @@ function App() {
     setSeasonSummary(null);
     setActiveTab("overview");
     setScreen("dashboard");
+    const champions = result.summary.championClasses || [];
     notify(
-      `Temporada encerrada. ${result.summary.isPlayerChampion ? "VOCÊ FOI O CAMPEÃO!" : `Campeão da classe: ${(nextGame.playerTeam.class === "HYPERCAR" ? result.summary.hyperChampion : result.summary.gt3Champion)?.name}`}`,
+      champions.length
+        ? `Temporada encerrada. VOCÊ FOI CAMPEÃO DE EQUIPES ${champions.length > 1 ? "NAS DUAS CLASSES" : `DA ${CLASS_RULES[champions[0]].label.toUpperCase()}`}!`
+        : `Temporada encerrada. Campeões de equipes: ${result.summary.hyperChampion?.label ?? "—"} (Hypercar) e ${result.summary.gt3Champion?.label ?? "—"} (LMGT3).`,
       "success"
     );
+    if (result.cut) {
+      notify(result.cut.text, "error");
+    }
     notify(result.summary.regulation.text, result.summary.regulation.type === "STABLE" ? "info" : "warn");
-  };
-
-  const newCareer = () => {
-    setFiredSummary(null);
-    setGame(null);
-    setScreen("menu");
   };
 
   // -------------------------------------------------------------------------
@@ -469,7 +580,11 @@ function App() {
           hireStaff,
           signDriver,
           setStarter,
+          swapDrivers,
           signSponsor,
+          createTeam,
+          editTeam,
+          deleteTeam,
           markAllRead,
           exportSaveFile
         }}
@@ -478,9 +593,21 @@ function App() {
   } else if (screen === "briefing" && weekend) {
     content = <BriefingScreen game={game} weekend={weekend} onContinue={() => setScreen("setup")} />;
   } else if (screen === "setup" && weekend) {
-    content = <SetupScreen game={game} weekend={weekend} onSetupComplete={onSetupComplete} />;
+    const entry = entryById(game, weekendCar) || playerEntries(game)[0];
+    content = <SetupScreen key={entry.id} game={game} weekend={weekend} entry={entry} copyFrom={setupCopyFor(entry)} onSetupComplete={onSetupComplete} />;
   } else if (screen === "qualy" && weekend) {
-    content = <QualifyingScreen game={game} weekend={weekend} onQualyComplete={onQualyComplete} onStartRace={startRace} />;
+    const entry = entryById(game, weekendCar) || playerEntries(game)[0];
+    content = (
+      <QualifyingScreen
+        key={weekend.qualifying ? "results" : weekendCar}
+        game={game}
+        weekend={weekend}
+        entry={entry}
+        autoLap={entry.id !== firstCarId}
+        onQualyComplete={onQualyComplete}
+        onStartRace={startRace}
+      />
+    );
   } else if (screen === "race" && raceState) {
     content = (
       <RaceScreen
@@ -492,6 +619,8 @@ function App() {
         cancelPit={cancelPit}
         changeStrategy={changeStrategy}
         toggleAutoStrategy={toggleAutoStrategy}
+        changeTeamOrders={changeTeamOrders}
+        swapCars={swapCars}
         endRace={finishRace}
       />
     );
@@ -499,8 +628,6 @@ function App() {
     content = <RaceResultsScreen game={game} report={raceResult.report} summary={raceResult.summary} onContinue={continueAfterRace} />;
   } else if (screen === "seasonEnd" && game) {
     content = <SeasonEndScreen game={game} summary={seasonSummary || buildSeasonSummary(game)} onConfirm={confirmSeasonEnd} exportSaveFile={exportSaveFile} />;
-  } else if (screen === "fired" && firedSummary) {
-    content = <FiredScreen summary={firedSummary} onNewCareer={newCareer} />;
   }
 
   return (
@@ -510,7 +637,19 @@ function App() {
         <StatsModal
           archive={game.archive}
           currentSeason={game.season}
-          currentStandings={[game.playerTeam, ...game.aiTeams]}
+          currentStandings={CLASSES.flatMap(cls =>
+            teamStandings(game, cls).map(row => ({
+              id: row.team.id,
+              rowKey: row.rowKey,
+              perCar: row.perCar,
+              name: row.team.name,
+              label: row.perCar ? `${row.team.name} #${row.entries[0]?.number}` : row.team.name,
+              numbers: row.entries.map(entry => entry.number),
+              class: cls,
+              color: row.team.color,
+              points: row.points,
+              stats: row.stats
+            })))}
           onClose={() => setModal(null)}
         />
       )}
