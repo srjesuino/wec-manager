@@ -272,7 +272,7 @@ const myCars = (g, cls) => playerEntries(g).filter(entry => entry.class === cls)
   check("jogador atrás ganha fichas de recuperação", game.playerTeam.programs.HYPERCAR.devTokens > HOMOLOGATION.base, `${game.playerTeam.programs.HYPERCAR.devTokens}`);
   const team = game.teams[0];
   const broke = developAiTeam({ ...team, funds: 1e9, programs: { [team.class]: { ...team.programs[team.class], devTokens: 0 } } }, 2, 1);
-  check("IA sem fichas não evolui peças homologadas", ["engine", "aero", "chassis", "reliability", "efficiency"].every(p => broke.programs[team.class].car[p] <= team.programs[team.class].car[p]));
+  check("IA sem fichas não evolui peças homologadas", ["engine", "aero", "chassis", "efficiency"].every(p => broke.programs[team.class].car[p] <= team.programs[team.class].car[p]));
   check("regulamento novo em 2028 e a cada 5 anos", regulationFor(2028).type === "RESET" && regulationFor(2033).type === "RESET" && regulationFor(2030).type === "STABLE");
   const evolved = evolveAiProfiles(game.teams, cls => teamStandings(game, cls), { difficulty: "NORMAL" }).aiTeams;
   check("perfis ficam dentro dos limites", evolved.every(t => t.ai.investment >= INVESTMENT_RANGE[0] && t.ai.investment <= INVESTMENT_RANGE[1] && t.ai.engineering >= ENGINEERING_RANGE[0] && t.ai.engineering <= ENGINEERING_RANGE[1]));

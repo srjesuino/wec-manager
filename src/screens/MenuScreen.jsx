@@ -151,7 +151,7 @@ const NewCareerModal = ({ series, teamName, onCancel, onStart }) => {
             <div className="flex-1">
               <span className="font-bold text-white">Balance of Performance (BoP)</span>
               <p className="text-xs text-gray-400">
-                Como no WEC real: carros acima da média da classe recebem lastro e os mais lentos ganham desempenho (até ±2%).
+                Como no WEC real: carros acima da média da classe recebem lastro e os mais lentos ganham desempenho (até ±2% na Hypercar e ±3% na LMGT3).
               </p>
             </div>
             <span className={`text-xs font-black px-3 py-1 rounded-full shrink-0 ${bopEnabled ? "bg-green-600 text-white" : "bg-gray-800 text-gray-500"}`}>

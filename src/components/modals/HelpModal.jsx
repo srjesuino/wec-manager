@@ -45,7 +45,7 @@ const SECTIONS = [
       "P&D: cada upgrade dá +2 na peça (ou +3 com um bom Diretor Técnico). O custo cresce com o nível e dispara acima de 80. A IA paga exatamente o mesmo.",
       "Homologação: cada carro pode trazer 10 evoluções por temporada (16 no ano de regulamento novo), mais até 8 extras se estiver muito atrás do melhor da classe. A equipe de pit não conta. Dinheiro sobrando vai para fábrica, staff e pilotos.",
       "Setup: um acerto perfeito vale ritmo de verdade, mas não compensa um carro muito pior — as equipes de fábrica também acertam bem os carros.",
-      "BoP: carros acima da média da classe recebem lastro; os mais lentos ganham desempenho (40% da diferença, até ±2%).",
+      "BoP: carros acima da média da classe recebem lastro; os mais lentos ganham desempenho (Hypercar: 40% da diferença, até ±2%; LMGT3: 60%, até ±3%).",
       "Fábrica: túnel de vento e centro de motores barateiam o P&D; o simulador dá mais tentativas de setup; o marketing aumenta os patrocínios.",
       "Equipe técnica: Diretor Técnico (upgrades), Engenheiro de Corrida (setup, previsão e rádio) e Chefe de Mecânicos (pit stops).",
       "Custos fixos por corrida: salários dos pilotos e da equipe técnica e manutenção das instalações. O extrato fica na aba Finanças."

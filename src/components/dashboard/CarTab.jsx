@@ -42,7 +42,7 @@ const CarTab = ({ game, onBuyUpgrade }) => {
             Fichas de homologação{classes.length > 1 ? ` (${CLASS_RULES[cls].label})` : ""}: <span className={tokens > 0 ? "text-blue-300" : "text-red-300"}>{tokens}</span> nesta temporada
           </div>
           <p className="text-[11px] text-gray-400">
-            Cada evolução de Motor, Aero, Chassi, Confiabilidade ou Eficiência usa uma ficha (a equipe de pit não usa). Todo projeto recebe {HOMOLOGATION.base} por temporada
+            Cada evolução de Motor, Aero, Chassi ou Eficiência usa uma ficha (Confiabilidade e equipe de pit não usam: correções de confiabilidade são liberadas pelo regulamento). Todo projeto recebe {HOMOLOGATION.base} por temporada
             ({HOMOLOGATION.newRegulation} no ano de regulamento novo){newRegs ? " — este é um ano de regulamento novo" : ""}, mais até {HOMOLOGATION.catchUpMax} extras se estiver muito atrás do
             melhor carro da classe. As fichas são do projeto, não de cada carro. A IA segue a mesma regra.
           </p>
@@ -158,7 +158,7 @@ const CarTab = ({ game, onBuyUpgrade }) => {
                 </span>
               </p>
               <p className="text-xs text-gray-500">
-                A FIA compensa parte da diferença entre o seu carro e a média da classe, considerando o tipo de pista (até ±2%). Desenvolver continua valendo: o BoP nunca
+                A FIA compensa parte da diferença entre o seu carro e a média da classe, considerando o tipo de pista (Hypercar: 40% da diferença, até ±2%; LMGT3: 60%, até ±3%). Desenvolver continua valendo: o BoP nunca
                 anula toda a vantagem.
               </p>
             </>

@@ -8,7 +8,7 @@ Jogo de gerenciamento de equipe do Mundial de Endurance (Hypercar e LMGT3), em R
 - **Campeonato de equipes**: na Hypercar os pontos dos carros da equipe se somam (como no campeonato de fabricantes). Na LMGT3, até 2026 cada carro é uma inscrição separada na tabela de equipes; a partir de 2027 (regulamento aprovado pela FIA em outubro de 2026) os pontos dos dois carros se somam. Cada carro também pontua no campeonato de carros/pilotos.
 - **Conselho**: o jogador é o dono da equipe e não é demitido. Se a confiança zerar, o conselho corta um carro (um Hypercar, ou um programa inteiro — a LMGT3 exige dois carros) ou, se não houver o que cortar, parte do orçamento. No Fácil, nunca.
 - **Editor de grid**: crie, edite e exclua equipes da IA à vontade; o tamanho do grid é livre e a IA não sai quando você entra numa classe.
-- **Motor de equilíbrio**: cada equipe da IA tem verba e engenharia que mudam ano a ano, regulamento novo em 2028 e a cada 5 anos (conceitos bons e ruins), homologação (fichas de evolução por temporada) e fábricas que contratam estrelas e reagem quando perdem.
+- **Motor de equilíbrio**: cada equipe da IA tem verba e engenharia que mudam ano a ano, regulamento novo em 2028 e a cada 5 anos (conceitos bons e ruins), homologação (fichas de evolução por temporada; correções de confiabilidade e a equipe de pit não usam ficha), BoP mais forte na LMGT3 (compensa 60% da diferença, até ±3%; na Hypercar 40%, até ±2%) e fábricas que contratam estrelas e reagem quando perdem.
 
 ```bash
 npm install

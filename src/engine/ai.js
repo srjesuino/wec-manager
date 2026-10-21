@@ -61,7 +61,8 @@ export const aiQualyBonus = team => clamp(0.2 + Math.random() * 0.6 + (profileOf
 
 // Escolhe a peça a evoluir: confiabilidade primeiro se estiver baixa, depois o ponto fraco do carro
 const choosePart = car => {
-  if (car.reliability < 75) {
+  // Carro novo costuma nascer frágil: a confiabilidade vem primeiro, mas sem travar a evolução de desempenho
+  if (car.reliability < 60 || (car.reliability < 75 && Math.random() < 0.3)) {
     return "reliability";
   }
   if (Math.random() < 0.65) {
@@ -101,8 +102,8 @@ export const developAiTeam = (team, cars = 1, share = 0.3, maxUpgrades = 8) => {
   let budget = Math.max(0, funds - reserveFor(team)) * share;
   const hasTokens = () => (tokens ?? Infinity) > 0;
   for (let i = 0; i < maxUpgrades; i++) {
-    // Sem fichas de homologação, só dá para treinar a equipe de pit
-    const part = hasTokens() ? choosePart(car) : "crew";
+    // Sem fichas de homologação, só a confiabilidade e a equipe de pit evoluem
+    const part = hasTokens() ? choosePart(car) : car.reliability < 80 ? "reliability" : "crew";
     if (car[part] >= PART_CAP) {
       continue;
     }

@@ -48,7 +48,7 @@ const conceptCar = (car, offset, reliability) => {
 export const playerConceptOffset = team => {
   const stars = team.staff?.technicalDirector?.stars ?? 2;
   const factory = ((team.facilities?.windTunnel ?? 1) + (team.facilities?.engineShop ?? 1)) / 2;
-  return Math.round(clamp((stars - 3) * 2.5 + (factory - 2) * 2 + gaussian() * 5, -10, 14));
+  return Math.round(clamp((stars - 3) * 1.5 + (factory - 2) * 1.5 + gaussian() * 5, -10, 12));
 };
 
 const conceptLabel = offset => (offset >= 6 ? "forte" : offset <= -4 ? "fraco" : "na média");

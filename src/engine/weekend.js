@@ -1,15 +1,16 @@
-import { SERIES_CONFIG, TRACKS, WEATHER_SCENARIOS } from "../data/constants.js";
+import { SERIES_CONFIG, TRACKS, WEATHER_SCENARIOS, CLASSES, CLASS_RULES } from "../data/constants.js";
 import { clamp, randRange, pickRandom, pickWeighted } from "../utils/helpers.js";
 import { basePace, carPerformance, driverPaceRating } from "./race.js";
-import { CLASSES } from "../data/constants.js";
 import { classPrograms, gridViews, programKey, teamById } from "./team.js";
 import { aiSetupBonus, aiQualyBonus } from "./ai.js";
 
 // ---------------------------------------------------------------------------
-// Balance of Performance (por projeto): compensa 40% da diferença de carro em relação à média da classe (máx. ±2%)
+// Balance of Performance (por projeto): compensa parte da diferença de carro em relação à média da classe
+// (Hypercar 40%, máx. ±2%; LMGT3 60%, máx. ±3% — ver CLASS_RULES.bop)
 // ---------------------------------------------------------------------------
 
-export const BOP_LIMIT = 2;
+// Cada ponto de desempenho do carro vale 0,05 m/s no ritmo (ver basePace); o BoP é um % da velocidade base
+const PERF_PACE = 0.05;
 
 // Devolve { "<equipe>:<classe>": bop } para todos os programas do grid
 export const computeBop = (game, trackType) => {
@@ -22,7 +23,9 @@ export const computeBop = (game, trackType) => {
     const perf = group.map(item => carPerformance(item.program.car, trackType));
     const avg = perf.reduce((sum, value) => sum + value, 0) / perf.length;
     group.forEach((item, i) => {
-      result[item.key] = Math.round(clamp(-(perf[i] - avg) * 0.0333, -BOP_LIMIT, BOP_LIMIT) * 100) / 100;
+      const { share, limit } = CLASS_RULES[cls].bop;
+      const perPoint = (share * PERF_PACE * 100) / SERIES_CONFIG[cls].baseSpeed;
+      result[item.key] = Math.round(clamp(-(perf[i] - avg) * perPoint, -limit, limit) * 100) / 100;
     });
   });
   return result;

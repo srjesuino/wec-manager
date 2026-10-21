@@ -631,9 +631,9 @@ export const REGULATION_START = 2028;
 
 // Homologação: quantas evoluções cada carro pode trazer por temporada (fichas), como os "jokers" do WEC.
 // Quem está muito atrás do melhor carro da classe ganha fichas extras (1 a cada 4 pontos, até +8).
-// A equipe de pit não é peça homologada e não usa ficha.
+// A equipe de pit não é peça homologada e correções de confiabilidade são liberadas pelo regulamento: não usam ficha.
 export const HOMOLOGATION = { base: 10, newRegulation: 16, catchUpEvery: 4, catchUpMax: 8 };
-export const TOKEN_FREE_PARTS = ["crew"];
+export const TOKEN_FREE_PARTS = ["crew", "reliability"];
 
 // Número e cor de cada equipe da IA
 export const TEAM_DETAILS = {
@@ -807,9 +807,11 @@ export const PART_LABELS = Object.fromEntries(Object.entries(PART_INFO).map(([ke
 // LMGT3: sempre 2 carros. Até 2026 cada carro é uma inscrição separada no campeonato de equipes;
 // a partir de 2027 (regulamento aprovado pela FIA em out/2026) os pontos dos dois carros se somam.
 // teamScoring: "COMBINED" (os carros da equipe somam) ou "PER_CAR" (cada carro pontua sozinho)
+// bop: parte da diferença de carro para a média da classe que o BoP compensa e o limite (%). Na LMGT3,
+// com carros de clientes de várias marcas, o BoP é o grande equalizador e pesa mais.
 export const CLASS_RULES = {
-  HYPERCAR: { minCars: 1, maxCars: 2, teamScoring: "COMBINED", label: "Hypercar", short: "HYP" },
-  LMGT3: { minCars: 2, maxCars: 2, teamScoring: "COMBINED", perCarUntil: 2026, label: "LMGT3", short: "GT3" }
+  HYPERCAR: { minCars: 1, maxCars: 2, teamScoring: "COMBINED", bop: { share: 0.4, limit: 2 }, label: "Hypercar", short: "HYP" },
+  LMGT3: { minCars: 2, maxCars: 2, teamScoring: "COMBINED", perCarUntil: 2026, bop: { share: 0.6, limit: 3 }, label: "LMGT3", short: "GT3" }
 };
 export const CLASSES = ["HYPERCAR", "LMGT3"];
 
