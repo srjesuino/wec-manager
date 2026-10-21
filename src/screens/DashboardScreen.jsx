@@ -9,6 +9,7 @@ import {
   Globe,
   Handshake,
   LayoutDashboard,
+  LayoutGrid,
   Maximize,
   Minimize,
   Play,
@@ -21,7 +22,7 @@ import {
   Wrench,
   X
 } from "lucide-react";
-import { TRACKS } from "../data/constants";
+import { TRACKS, CLASS_RULES } from "../data/constants";
 import { formatMoney } from "../utils/helpers";
 import { ClassBadge, MeterBar, confidenceColor } from "../components/ui/common";
 import NewsFeed from "../components/NewsFeed";
@@ -33,7 +34,9 @@ import SponsorsTab from "../components/dashboard/SponsorsTab";
 import FinancesTab from "../components/dashboard/FinancesTab";
 import CalendarTab from "../components/dashboard/CalendarTab";
 import StandingsTab from "../components/dashboard/StandingsTab";
-import { playerEntries } from "../engine/team";
+import GridTab from "../components/dashboard/GridTab";
+import { playerEntries, playerClasses } from "../engine/team";
+import { playerStandingRow } from "../engine/career";
 
 const TABS = [
   { id: "overview", label: "Visão Geral", title: "Visão Geral", icon: LayoutDashboard, group: "Gestão" },
@@ -44,7 +47,8 @@ const TABS = [
   { id: "finances", label: "Finanças", title: "Finanças", icon: Wallet, group: "Gestão" },
   { id: "calendar", label: "Calendário", title: "Calendário", icon: CalendarDays, group: "Mundo" },
   { id: "standings", label: "Classificação", title: "Classificação", icon: TrendingUp, group: "Mundo" },
-  { id: "news", label: "Notícias", title: "Centro de Notícias", icon: Globe, group: "Mundo" }
+  { id: "news", label: "Notícias", title: "Centro de Notícias", icon: Globe, group: "Mundo" },
+  { id: "grid", label: "Editor de grid", title: "Editor de grid", icon: LayoutGrid, group: "Mundo" }
 ];
 
 const MOBILE_MAIN = ["overview", "car", "drivers"];
@@ -54,6 +58,7 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const player = game.playerTeam;
   const entries = playerEntries(game);
+  const classes = playerClasses(game);
   const nextRace = TRACKS[game.raceIndex];
   const unreadCount = game.newsFeed.filter(item => !item.read).length;
   const current = TABS.find(tab => tab.id === activeTab) || TABS[0];
@@ -78,6 +83,8 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
         return <CalendarTab game={game} />;
       case "standings":
         return <StandingsTab game={game} />;
+      case "grid":
+        return <GridTab game={game} onCreate={actions.createTeam} onEdit={actions.editTeam} onDelete={actions.deleteTeam} />;
       case "news":
         return (
           <div className="h-full flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-500 min-h-[70vh]">
@@ -121,7 +128,7 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
             {entries.map(entry => (
               <div
                 className="relative w-10 h-10 rounded-lg shadow-lg flex items-center justify-center font-black italic text-black"
-                style={{ backgroundColor: entry.color }}
+                style={{ backgroundColor: player.color }}
                 title={`#${entry.number} · ${entry.class === "HYPERCAR" ? "Hypercar" : "LMGT3"}`}
                 key={entry.id}
               >
@@ -153,7 +160,7 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
         <div className="flex items-center gap-3 md:gap-6">
           <div className="hidden lg:flex flex-col w-28 leading-tight">
             <span className="text-[10px] text-gray-500 uppercase font-bold flex justify-between">
-              <span>Diretoria</span>
+              <span>Conselho</span>
               <span>{game.career.confidence}%</span>
             </span>
             <MeterBar value={game.career.confidence} color={confidenceColor(game.career.confidence)} height="h-1.5" />
@@ -168,7 +175,7 @@ const DashboardScreen = ({ game, activeTab, setActiveTab, isNewsLoading, isFullS
             <span className="text-[8px] md:text-[10px] text-gray-500 uppercase font-bold hidden md:block">Orçamento</span>
             <span className={`font-mono font-bold text-sm md:text-xl ${player.funds < 1000000 ? "text-red-400" : "text-green-400"}`}>{formatMoney(player.funds)}</span>
             <span className="text-[10px] font-bold text-yellow-500 md:hidden">
-              {entries.length > 1 ? entries.map(entry => `#${entry.number} ${entry.points}`).join(" · ") : player.points} Pts
+              {classes.map(cls => `${classes.length > 1 ? `${CLASS_RULES[cls].short} ` : ""}${playerStandingRow(game, cls)?.points ?? 0}`).join(" · ")} Pts
             </span>
           </div>
         </div>

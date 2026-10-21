@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import { formatMoney } from "../../utils/helpers";
-import { TWO_CAR_SPONSOR_BONUS } from "../../data/constants";
-import { driversPayroll, staffPayroll, facilityUpkeep, sponsorMultiplier, secondCarOperations } from "../../engine/economy";
+import { CLASS_RULES } from "../../data/constants";
+import { driversPayroll, staffPayroll, facilityUpkeep, sponsorMultiplier, extraCarOperations } from "../../engine/economy";
+import { mainClass, playerEntries, sponsorExposure } from "../../engine/team";
 
 // Gráfico simples do saldo ao longo das corridas
 const BalanceChart = ({ entries }) => {
@@ -41,13 +42,17 @@ const FinancesTab = ({ game }) => {
   const items = seasonEntries.flatMap(entry => entry.items);
   const income = items.filter(item => item.amount > 0).reduce((sum, item) => sum + item.amount, 0);
   const expenses = items.filter(item => item.amount < 0).reduce((sum, item) => sum + item.amount, 0);
-  const sister = game.sisterTeam;
-  const lineups = [player, sister].filter(Boolean);
-  const wages = lineups.reduce((sum, team) => sum + driversPayroll(team), 0);
-  const staff = staffPayroll(player);
-  const upkeep = facilityUpkeep(player);
-  const operations = sister ? secondCarOperations(sister.class) : 0;
-  const sponsorMult = sponsorMultiplier(player) * (sister ? 1 + TWO_CAR_SPONSOR_BONUS : 1);
+  const cars = playerEntries(game);
+  const multi = cars.length > 1;
+  const scale = mainClass(player);
+  const wages = driversPayroll(cars);
+  const staff = staffPayroll(player, scale);
+  const upkeep = facilityUpkeep(player, scale);
+  // Todo carro além do primeiro paga operação extra (mesma ordem do motor: Hypercar primeiro)
+  const extraCars = cars.slice(1);
+  const operations = extraCars.reduce((sum, entry) => sum + extraCarOperations(entry.class), 0);
+  const exposure = sponsorExposure(cars.length);
+  const sponsorMult = sponsorMultiplier(player) * exposure;
   const sponsors = player.sponsors.reduce((sum, contract) => sum + (contract.type === "GAMBLE" ? contract.maxRandom / 2 : contract.perRacePayment), 0) * sponsorMult;
   const projected = sponsors - wages - staff - upkeep - operations;
   return (
@@ -76,11 +81,13 @@ const FinancesTab = ({ game }) => {
           <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Por corrida</h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-400">Patrocínios (estimado)</span>
+              <span className="text-gray-400">
+                Patrocínios (estimado){exposure > 1 && <span className="text-[10px] text-green-500"> +{Math.round((exposure - 1) * 100)}% exposição</span>}
+              </span>
               <span className="font-mono text-green-300">+{formatMoney(sponsors)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-400">Salários dos pilotos{sister ? " (2 carros)" : ""}</span>
+              <span className="text-gray-400">Salários dos pilotos{multi ? ` (${cars.length} carros)` : ""}</span>
               <span className="font-mono text-red-300">-{formatMoney(wages)}</span>
             </div>
             <div className="flex justify-between">
@@ -91,12 +98,14 @@ const FinancesTab = ({ game }) => {
               <span className="text-gray-400">Manutenção das instalações</span>
               <span className="font-mono text-red-300">-{formatMoney(upkeep)}</span>
             </div>
-            {sister && (
-              <div className="flex justify-between">
-                <span className="text-gray-400">Operação do 2º carro (#{sister.number})</span>
-                <span className="font-mono text-red-300">-{formatMoney(operations)}</span>
+            {extraCars.map(entry => (
+              <div className="flex justify-between" key={entry.id}>
+                <span className="text-gray-400">
+                  Operação do carro #{entry.number} <span className="text-[10px] text-gray-500">{CLASS_RULES[entry.class]?.short}</span>
+                </span>
+                <span className="font-mono text-red-300">-{formatMoney(extraCarOperations(entry.class))}</span>
               </div>
-            )}
+            ))}
             <div className="flex justify-between border-t border-gray-800 pt-2 font-bold">
               <span className="text-gray-300">Sem contar prêmios</span>
               <span className={`font-mono ${projected >= 0 ? "text-green-400" : "text-red-400"}`}>
@@ -106,7 +115,8 @@ const FinancesTab = ({ game }) => {
             </div>
           </div>
           <p className="text-[11px] text-gray-500 mt-4">
-            Prêmios de corrida e do campeonato, bônus dos patrocinadores e o orçamento anual da diretoria entram à parte. Upgrades e contratações saem direto do saldo.
+            Prêmios de corrida e do campeonato, bônus dos patrocinadores e o orçamento anual do conselho entram à parte. Upgrades e contratações saem direto do saldo.
+            {multi && " Equipe técnica e instalações são pagas uma vez e atendem todos os carros; cada carro além do primeiro custa operação extra."}
           </p>
         </div>
       </div>

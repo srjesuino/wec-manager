@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { ArrowRight, CloudRain, CloudSun, Gauge, Headphones, Moon, Scale, Sun, Target, Trophy } from "lucide-react";
-import { TRACKS, TRACK_TYPE_LABELS, WEATHER_SCENARIOS } from "../data/constants";
+import { TRACKS, TRACK_TYPE_LABELS, WEATHER_SCENARIOS, CLASS_RULES } from "../data/constants";
 import { formatClock } from "../utils/helpers";
-import { classStandings, playerStanding, objectiveFor } from "../engine/career";
-import { isPlayerId, playerEntries } from "../engine/team";
-import { bopWeight, classTeams } from "../engine/weekend";
+import { teamStandings, playerStanding, objectiveFor } from "../engine/career";
+import { classPrograms, playerEntries, teamClasses, isPerCar, teamScoringText, PLAYER_ID } from "../engine/team";
+import { bopWeight, computeBop } from "../engine/weekend";
 import { TrackOutline } from "../components/TrackMap";
 import { TeamStripe, CountryCode } from "../components/ui/common";
 import { hasNightRacing } from "../components/dashboard/OverviewTab";
@@ -25,11 +25,14 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
   const engineer = player.staff?.raceEngineer?.stars ?? 2;
   const rain = Math.round(weekend.forecastRain * 100);
   const entries = playerEntries(game);
-  const twoCars = entries.length > 1;
-  const playerClasses = [...new Set(entries.map(entry => entry.class))];
-  const [bopClass, setBopClass] = useState(player.class);
-  const standings = classStandings(game, bopClass);
-  const rivals = classTeams(game, bopClass).sort((a, b) => (a.bop || 0) - (b.bop || 0));
+  const playerClasses = teamClasses(player);
+  const multiClass = playerClasses.length > 1;
+  const [bopClass, setBopClass] = useState(playerClasses[0] || "HYPERCAR");
+  const standings = teamStandings(game, bopClass);
+  const bops = computeBop(game, track.type);
+  const rivals = classPrograms(game, bopClass)
+    .map(row => ({ ...row, bop: bops[row.key] || 0 }))
+    .sort((a, b) => a.bop - b.bop);
   const seasonStarted = (game.archive.currentSeasonRaces || []).length > 0;
   const sponsorGoals = player.sponsors.filter(contract => contract.goalPosition && (contract.type === "PERFORMANCE" || (contract.type === "LEMANS" && track.id === "lemans")));
   const WeatherIcon = rain >= 50 ? CloudRain : rain >= 20 ? CloudSun : Sun;
@@ -118,14 +121,15 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
               <Target size={16} className="text-green-400" /> Metas
             </h3>
             <ul className="space-y-2 text-sm">
-              {entries.map(entry => {
-                const objective = objectiveFor(game, entry);
+              {playerClasses.map(cls => {
+                const objective = objectiveFor(game, cls);
+                const cars = entries.filter(entry => entry.class === cls);
                 return (
-                  <li className="flex items-start gap-2" key={entry.id}>
+                  <li className="flex items-start gap-2" key={cls}>
                     <Trophy size={14} className="text-yellow-400 mt-0.5 shrink-0" />
                     <span>
-                      Diretoria{twoCars ? ` (#${entry.number} ${entry.class === "HYPERCAR" ? "HYP" : "GT3"})` : ""}: {objective?.text}.
-                      {seasonStarted ? ` Agora: ${playerStanding(game, entry)}º.` : ""}
+                      Conselho{multiClass || cars.length > 1 ? ` (${CLASS_RULES[cls].label} · ${cars.map(entry => `#${entry.number}`).join(" e ")})` : ""}: {objective?.text}.
+                      {seasonStarted ? ` Agora: ${playerStanding(game, cls)}º nas equipes.` : ""}
                     </span>
                   </li>
                 );
@@ -133,9 +137,13 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
               <li className="flex items-start gap-2">
                 <Gauge size={14} className="text-blue-400 mt-0.5 shrink-0" />
                 <span>
-                  {twoCars
-                    ? `Terminar até ${entries.map(entry => `P${objectiveFor(game, entry)?.position} (#${entry.number})`).join(" e ")} na classe aumenta a confiança da diretoria.`
-                    : `Terminar até P${objectiveFor(game, player)?.position} na classe aumenta a confiança da diretoria.`}
+                  {multiClass
+                    ? `Terminar até ${playerClasses.map(cls => `P${objectiveFor(game, cls)?.position} nas equipes da ${CLASS_RULES[cls].label}`).join(" e ")} aumenta a confiança do conselho.`
+                    : `Terminar até P${objectiveFor(game, playerClasses[0])?.position} nas equipes da classe aumenta a confiança do conselho.`}
+                  {playerClasses
+                    .filter(cls => isPerCar(cls, game.season) || entries.filter(entry => entry.class === cls).length > 1)
+                    .map(cls => ` ${multiClass ? `${CLASS_RULES[cls].label}: ` : ""}${teamScoringText(cls, game.season)}`)
+                    .join("")}
                 </span>
               </li>
               {sponsorGoals.map(contract => (
@@ -155,7 +163,7 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
               <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
                 <Scale size={16} className="text-green-400" /> BoP da classe
               </h3>
-              {playerClasses.length > 1 && (
+              {multiClass && (
                 <div className="flex bg-gray-950 rounded-lg p-0.5 border border-gray-800">
                   {["HYPERCAR", "LMGT3"].map(cls => (
                     <button
@@ -173,20 +181,24 @@ const BriefingScreen = ({ game, weekend, onContinue }) => {
               <p className="text-sm text-gray-400">BoP desligado nesta carreira.</p>
             ) : (
               <div className="space-y-1 max-h-56 overflow-y-auto custom-scrollbar pr-1">
-                {rivals.map(team => (
-                  <div className={`flex items-center justify-between text-xs px-2 py-1 rounded ${isPlayerId(team.id) ? "bg-blue-900/30" : ""}`} key={team.id}>
-                    <span className="flex items-center gap-2 min-w-0">
-                      <TeamStripe color={team.color} />
-                      <span className={`truncate font-bold ${isPlayerId(team.id) ? "text-blue-300" : "text-gray-300"}`}>{team.name}</span>
-                      <span className="text-gray-600">{standings.findIndex(item => item.id === team.id) + 1}º</span>
-                    </span>
-                    <span className={`font-mono font-bold ${(team.bop || 0) > 0 ? "text-green-400" : (team.bop || 0) < 0 ? "text-red-400" : "text-gray-500"}`}>
-                      {(team.bop || 0) > 0 ? "+" : ""}
-                      {(team.bop || 0).toFixed(2)}% · {bopWeight(team.bop || 0) > 0 ? "+" : ""}
-                      {bopWeight(team.bop || 0)}kg
-                    </span>
-                  </div>
-                ))}
+                {rivals.map(row => {
+                  const mine = row.team.id === PLAYER_ID;
+                  return (
+                    <div className={`flex items-center justify-between text-xs px-2 py-1 rounded ${mine ? "bg-blue-900/30" : ""}`} key={row.key}>
+                      <span className="flex items-center gap-2 min-w-0">
+                        <TeamStripe color={row.team.color} />
+                        <span className={`truncate font-bold ${mine ? "text-blue-300" : "text-gray-300"}`}>{row.team.name}</span>
+                        <span className="text-[10px] font-mono text-gray-500 shrink-0">{row.entries.map(entry => `#${entry.number}`).join(" ")}</span>
+                        <span className="text-gray-600 shrink-0">{standings.findIndex(item => item.key === row.key) + 1}º</span>
+                      </span>
+                      <span className={`font-mono font-bold shrink-0 ${row.bop > 0 ? "text-green-400" : row.bop < 0 ? "text-red-400" : "text-gray-500"}`}>
+                        {row.bop > 0 ? "+" : ""}
+                        {row.bop.toFixed(2)}% · {bopWeight(row.bop) > 0 ? "+" : ""}
+                        {bopWeight(row.bop)}kg
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

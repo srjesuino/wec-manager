@@ -1,7 +1,8 @@
 import { Cpu, Headphones, Megaphone, Monitor, UserPlus, Wind, Hammer, Wrench } from "lucide-react";
 import { FACILITIES, FACILITY_ORDER, FACILITY_MAX_LEVEL, STAFF_ROLES, STAFF_ORDER } from "../../data/constants";
 import { formatMoney } from "../../utils/helpers";
-import { facilityUpgradeCost, staffSalary, staffHiringFee, bonusUpgradeChance, sponsorSlots } from "../../engine/economy";
+import { econ, facilityUpgradeCost, staffSalary, staffHiringFee, bonusUpgradeChance, sponsorSlots } from "../../engine/economy";
+import { mainClass, playerEntries } from "../../engine/team";
 import { setupAttempts, qualifyingBarFactor } from "../../engine/weekend";
 import { Stars } from "../ui/common";
 
@@ -44,11 +45,14 @@ const staffEffect = (team, role, stars) => {
 
 const FactoryTab = ({ game, onUpgradeFacility, onHireStaff }) => {
   const player = game.playerTeam;
+  const scale = mainClass(player);
+  const cars = playerEntries(game);
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-      {game.sisterTeam && (
+      {cars.length > 1 && (
         <p className="bg-blue-900/20 border border-blue-800/50 rounded-xl p-4 text-sm text-blue-100">
-          Instalações e equipe técnica atendem os dois carros (#{player.number} e #{game.sisterTeam.number}): cada ampliação ou contratação vale para os dois.
+          Instalações e equipe técnica atendem todos os carros da equipe ({cars.map(entry => `#${entry.number}`).join(", ")}): cada ampliação ou contratação vale para
+          todos.{scale === "HYPERCAR" && cars.some(entry => entry.class === "LMGT3") && " Custos e salários seguem a escala da Hypercar."}
         </p>
       )}
       <section>
@@ -59,7 +63,7 @@ const FactoryTab = ({ game, onUpgradeFacility, onHireStaff }) => {
             const Icon = FACILITY_ICONS[id];
             const level = player.facilities[id];
             const maxed = level >= FACILITY_MAX_LEVEL;
-            const cost = facilityUpgradeCost(player.class, level);
+            const cost = facilityUpgradeCost(scale, level);
             const canAfford = player.funds >= cost;
             return (
               <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-xl p-5 shadow-lg flex flex-col gap-3" key={id}>
@@ -94,7 +98,7 @@ const FactoryTab = ({ game, onUpgradeFacility, onHireStaff }) => {
             );
           })}
         </div>
-        <p className="text-[11px] text-gray-500 mt-2">Cada nível de instalação custa {formatMoney(25000 * (player.class === "HYPERCAR" ? 1 : 0.33))} de manutenção por corrida.</p>
+        <p className="text-[11px] text-gray-500 mt-2">Cada nível de instalação custa {formatMoney(25000 * econ(scale))} de manutenção por corrida.</p>
       </section>
 
       <section>
@@ -117,7 +121,7 @@ const FactoryTab = ({ game, onUpgradeFacility, onHireStaff }) => {
                         <Stars value={current.stars} size={14} />
                       </div>
                       <p className="text-xs text-green-300 font-bold mt-1">{staffEffect(player, role, current.stars)}</p>
-                      <p className="text-[10px] text-gray-500 mt-1">Salário: {formatMoney(staffSalary(current.stars, player.class))}/corrida</p>
+                      <p className="text-[10px] text-gray-500 mt-1">Salário: {formatMoney(staffSalary(current.stars, scale))}/corrida</p>
                     </>
                   )}
                 </div>
@@ -125,7 +129,7 @@ const FactoryTab = ({ game, onUpgradeFacility, onHireStaff }) => {
                   <p className="text-[10px] uppercase font-bold text-gray-500 px-1">Mercado</p>
                   {market.length === 0 && <p className="text-xs text-gray-600 px-1">Sem candidatos nesta temporada.</p>}
                   {market.map(candidate => {
-                    const fee = staffHiringFee(candidate.stars, player.class);
+                    const fee = staffHiringFee(candidate.stars, scale);
                     const canAfford = player.funds >= fee;
                     return (
                       <div className="flex items-center justify-between gap-2 bg-gray-950 border border-gray-800 rounded-lg px-3 py-2" key={candidate.id}>
@@ -133,7 +137,7 @@ const FactoryTab = ({ game, onUpgradeFacility, onHireStaff }) => {
                           <div className="text-sm font-bold text-gray-200 truncate">{candidate.name}</div>
                           <div className="flex items-center gap-2">
                             <Stars value={candidate.stars} size={10} />
-                            <span className="text-[10px] text-gray-500">{formatMoney(staffSalary(candidate.stars, player.class))}/corrida</span>
+                            <span className="text-[10px] text-gray-500">{formatMoney(staffSalary(candidate.stars, scale))}/corrida</span>
                           </div>
                         </div>
                         <button

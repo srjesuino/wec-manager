@@ -10,8 +10,9 @@ import {
   ThumbsDown,
   ThumbsUp
 } from "lucide-react";
-import { TRACK_TYPE_LABELS } from "../data/constants";
+import { TRACK_TYPE_LABELS, CLASS_RULES } from "../data/constants";
 import { setupAttempts } from "../engine/weekend";
+import { playerEntries } from "../engine/team";
 
 // Engenheiro 3+ estrelas diz o tamanho do ajuste; 4+ estrelas dá uma estimativa em pontos
 const engineerDetail = (diff, stars) => {
@@ -24,9 +25,9 @@ const engineerDetail = (diff, stars) => {
 };
 
 const SetupScreen = ({ game, weekend, entry, copyFrom = null, onSetupComplete }) => {
-  const car = entry || game.playerTeam;
-  const twoCars = !!game.sisterTeam;
-  const teamName = twoCars ? car.name : game.playerTeam.name;
+  const car = entry || playerEntries(game)[0];
+  const multiCar = playerEntries(game).length > 1;
+  const teamName = game.playerTeam.name;
   const trackName = weekend.track.name;
   const trackType = weekend.track.type;
   const maxAttempts = setupAttempts(game.playerTeam);
@@ -199,9 +200,9 @@ const SetupScreen = ({ game, weekend, entry, copyFrom = null, onSetupComplete })
               {TRACK_TYPE_LABELS[trackType] || trackType}
             </span>
             <span className="text-xs font-bold text-gray-500 uppercase">{teamName}</span>
-            {twoCars && (
+            {multiCar && (
               <span className={`text-xs font-black px-2 py-1 rounded ${car.class === "HYPERCAR" ? "bg-red-900 text-red-200" : "bg-yellow-900 text-yellow-200"}`}>
-                Carro #{car.number} · {car.class}
+                Carro #{car.number} · {CLASS_RULES[car.class]?.label ?? car.class}
               </span>
             )}
           </div>

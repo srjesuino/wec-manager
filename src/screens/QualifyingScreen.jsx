@@ -3,7 +3,7 @@ import { Bot, CirclePlay, CloudRain, Crown, Timer, Zap } from "lucide-react";
 import { TYRES, TYRE_ORDER } from "../data/constants";
 import { formatLapTime } from "../utils/helpers";
 import { qualifyingBarFactor, entrySetupScore, entryQualyScore } from "../engine/weekend";
-import { SISTER_ID } from "../engine/team";
+import { playerEntries } from "../engine/team";
 import { TeamStripe } from "../components/ui/common";
 
 const SECTOR_STYLES = {
@@ -221,13 +221,14 @@ const TYRE_HINTS = {
 
 // Grid de largada + escolha do pneu inicial
 const QualifyingResults = ({ game, weekend, onStartRace }) => {
-  const player = game.playerTeam;
-  const [view, setView] = useState(player.class);
-  const mineAll = weekend.qualifying.filter(entry => entry.isPlayer).sort((a, b) => (a.teamId === "player" ? -1 : b.teamId === "player" ? 1 : 0));
+  // Carros do jogador na ordem da equipe (Hypercar primeiro)
+  const order = playerEntries(game).map(entry => entry.id);
+  const mineAll = weekend.qualifying.filter(entry => entry.isPlayer).sort((a, b) => order.indexOf(a.entryId) - order.indexOf(b.entryId));
   const mine = mineAll[0];
   const twoCars = mineAll.length > 1;
-  const [tyres, setTyres] = useState(() => Object.fromEntries(mineAll.map(entry => [entry.teamId, weekend.startTyre])));
-  const [tyreCar, setTyreCar] = useState(mine.teamId);
+  const [view, setView] = useState(mine?.class || "HYPERCAR");
+  const [tyres, setTyres] = useState(() => Object.fromEntries(mineAll.map(entry => [entry.entryId, weekend.startTyre])));
+  const [tyreCar, setTyreCar] = useState(mine.entryId);
   const tyre = tyres[tyreCar];
   const setTyre = id => setTyres(prev => ({ ...prev, [tyreCar]: id }));
   const rows = weekend.qualifying.filter(entry => entry.class === view);
@@ -240,7 +241,7 @@ const QualifyingResults = ({ game, weekend, onStartRace }) => {
           {twoCars ? (
             <div className="flex flex-wrap justify-center gap-4 md:gap-10 mt-2">
               {mineAll.map(entry => (
-                <div key={entry.teamId}>
+                <div key={entry.entryId}>
                   <h1 className="text-4xl md:text-5xl font-black italic">
                     P{entry.classPosition}{" "}
                     <span className="text-base md:text-xl text-gray-500 not-italic font-bold">
@@ -253,7 +254,7 @@ const QualifyingResults = ({ game, weekend, onStartRace }) => {
                     </div>
                   )}
                   <p className="text-xs text-gray-400 mt-1">
-                    Setup {entrySetupScore(weekend, entry.teamId).toFixed(0)}% · Volta {entryQualyScore(weekend, entry.teamId).toFixed(0)}% · {formatLapTime(entry.lapTime)} com{" "}
+                    Setup {entrySetupScore(weekend, entry.entryId).toFixed(0)}% · Volta {entryQualyScore(weekend, entry.entryId).toFixed(0)}% · {formatLapTime(entry.lapTime)} com{" "}
                     {entry.driver}
                   </p>
                 </div>
@@ -270,7 +271,7 @@ const QualifyingResults = ({ game, weekend, onStartRace }) => {
                 </div>
               )}
               <p className="text-sm text-gray-400 mt-2">
-                Setup {entrySetupScore(weekend, mine.teamId).toFixed(0)}% · Volta {entryQualyScore(weekend, mine.teamId).toFixed(0)}% · Melhor volta {formatLapTime(mine.lapTime)} com{" "}
+                Setup {entrySetupScore(weekend, mine.entryId).toFixed(0)}% · Volta {entryQualyScore(weekend, mine.entryId).toFixed(0)}% · Melhor volta {formatLapTime(mine.lapTime)} com{" "}
                 {mine.driver}
               </p>
             </>
@@ -305,7 +306,7 @@ const QualifyingResults = ({ game, weekend, onStartRace }) => {
                 </thead>
                 <tbody className="divide-y divide-gray-800">
                   {rows.map(entry => (
-                    <tr className={entry.isPlayer ? "bg-blue-900/20" : ""} key={entry.teamId}>
+                    <tr className={entry.isPlayer ? "bg-blue-900/20" : ""} key={entry.entryId}>
                       <td className="p-2 text-center font-mono font-bold text-gray-400">{entry.classPosition}</td>
                       <td className="p-2">
                         <span className="flex items-center gap-2">
@@ -331,13 +332,13 @@ const QualifyingResults = ({ game, weekend, onStartRace }) => {
                 <div className="flex gap-1 mt-2">
                   {mineAll.map(entry => (
                     <button
-                      key={entry.teamId}
-                      onClick={() => setTyreCar(entry.teamId)}
-                      className={`flex-1 py-1.5 rounded border text-xs font-black flex items-center justify-center gap-1 ${tyreCar === entry.teamId ? "bg-blue-900/40 border-blue-500 text-white" : "bg-gray-950 border-gray-700 text-gray-400"}`}
+                      key={entry.entryId}
+                      onClick={() => setTyreCar(entry.entryId)}
+                      className={`flex-1 py-1.5 rounded border text-xs font-black flex items-center justify-center gap-1 ${tyreCar === entry.entryId ? "bg-blue-900/40 border-blue-500 text-white" : "bg-gray-950 border-gray-700 text-gray-400"}`}
                     >
                       #{entry.number}
-                      <span className="text-[9px] font-mono" style={{ color: TYRES[tyres[entry.teamId]]?.color }}>
-                        {TYRES[tyres[entry.teamId]]?.short}
+                      <span className="text-[9px] font-mono" style={{ color: TYRES[tyres[entry.entryId]]?.color }}>
+                        {TYRES[tyres[entry.entryId]]?.short}
                       </span>
                     </button>
                   ))}
@@ -385,26 +386,28 @@ const QualifyingResults = ({ game, weekend, onStartRace }) => {
   );
 };
 
-// Volta automática do piloto (segundo carro): depende da consistência do melhor piloto
+// Volta automática do piloto (carros depois do primeiro): depende da consistência do melhor piloto
 const autoQualyScore = car => {
   const consistency = Math.max(...car.drivers.map(driver => driver.attrs?.consistency ?? driver.rating ?? 60));
   return Math.max(0, Math.min(100, 35 + consistency * 0.35 + Math.random() * 20));
 };
 
-const QualifyingScreen = ({ game, weekend, entry, onQualyComplete, onStartRace }) => {
+const QualifyingScreen = ({ game, weekend, entry, autoLap = false, onQualyComplete, onStartRace }) => {
   if (weekend.qualifying) {
     return <QualifyingResults game={game} weekend={weekend} onStartRace={onStartRace} />;
   }
-  const car = entry || game.playerTeam;
-  const twoCars = !!game.sisterTeam;
+  const cars = playerEntries(game);
+  const car = entry || cars[0];
+  const multiCar = cars.length > 1;
+  const step = cars.findIndex(item => item.id === car.id) + 1;
   return (
     <QualifyingGame
-      teamName={twoCars ? car.name : game.playerTeam.name}
+      teamName={game.playerTeam.name}
       trackName={weekend.track.name}
       barFactor={qualifyingBarFactor(game.playerTeam)}
       onComplete={onQualyComplete}
-      carInfo={twoCars ? { number: car.number, class: car.class, step: car.id === SISTER_ID ? "2º carro" : "1º carro" } : null}
-      onAuto={car.id === SISTER_ID ? () => onQualyComplete(autoQualyScore(car)) : null}
+      carInfo={multiCar ? { number: car.number, class: car.class, step: `${step}º de ${cars.length} carros` } : null}
+      onAuto={autoLap ? () => onQualyComplete(autoQualyScore(car)) : null}
     />
   );
 };

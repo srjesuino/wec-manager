@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { ArrowLeftRight, ArrowUp, Frown, Handshake, Lock, Meh, Smile, UserPlus, Users, X } from "lucide-react";
-import { TRACKS } from "../../data/constants";
+import { TRACKS, CLASS_RULES } from "../../data/constants";
 import { ATTRIBUTE_LABELS, formatMoney } from "../../utils/helpers";
 import { signingFee, driverWageFor, releaseCost, requiredReputation } from "../../engine/economy";
-import { playerEntries } from "../../engine/team";
+import { playerEntries, mainClass } from "../../engine/team";
 import { CategoryBadge, ClassBadge, Flag, MeterBar } from "../ui/common";
 
-const className = cls => (cls === "HYPERCAR" ? "Hypercar" : "LMGT3");
+const carLabel = entry => `#${entry.number} · ${CLASS_RULES[entry.class].label}`;
 
 const MoraleIcon = ({ value }) => {
   if (value >= 70) {
@@ -32,7 +32,7 @@ const potentialLabel = (driver, simulatorLevel) => {
   return `${low}-${high}`;
 };
 
-const DriverCard = ({ driver, index, team, onSetStarter, otherTeam, onSwap }) => (
+const DriverCard = ({ driver, index, entry, onSetStarter, otherEntries, onSwap }) => (
   <div className="bg-gradient-to-br from-gray-800 to-gray-900 p-5 rounded-xl border border-gray-700 shadow-xl relative overflow-hidden group">
     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
       <Users size={64} />
@@ -83,10 +83,10 @@ const DriverCard = ({ driver, index, team, onSetStarter, otherTeam, onSwap }) =>
         </div>
         <div className="text-right">
           <span className="text-[10px] text-gray-500 uppercase block">Salário</span>
-          <span className="font-bold text-red-300 font-mono">{formatMoney(driver.wage || driverWageFor(driver, team.class))}</span>
+          <span className="font-bold text-red-300 font-mono">{formatMoney(driver.wage || driverWageFor(driver, entry.class))}</span>
         </div>
       </div>
-      {otherTeam && (
+      {otherEntries.length > 0 && (
         <div className="mt-3 flex items-center gap-2">
           <ArrowLeftRight size={12} className="text-gray-500 shrink-0" />
           <select
@@ -95,11 +95,15 @@ const DriverCard = ({ driver, index, team, onSetStarter, otherTeam, onSwap }) =>
             className="flex-1 min-w-0 bg-gray-950 border border-gray-700 rounded-lg text-[11px] font-bold text-gray-300 px-2 py-1.5"
             aria-label={`Trocar ${driver.name} de carro`}
           >
-            <option value="">Trocar de carro com... (#{otherTeam.number})</option>
-            {otherTeam.drivers.map(other => (
-              <option value={other.id} key={other.id}>
-                {other.name} ({other.rating})
-              </option>
+            <option value="">Trocar de carro com...</option>
+            {otherEntries.map(other => (
+              <optgroup label={carLabel(other)} key={other.id}>
+                {other.drivers.map(item => (
+                  <option value={item.id} key={item.id}>
+                    {item.name} ({item.rating})
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>
@@ -139,16 +143,16 @@ const SignModal = ({ driver, entries, funds, racesLeft, onConfirm, onClose }) =>
         </div>
         <div className="p-5 space-y-4">
           <p className="text-xs font-bold uppercase text-gray-500">Quem deixa a equipe?</p>
-          {entries.map(team => {
-            const carFee = signingFee(driver, team.class);
+          {entries.map(entry => {
+            const carFee = signingFee(driver, entry.class);
             return (
-              <div className="space-y-2" key={team.id}>
+              <div className="space-y-2" key={entry.id}>
                 {twoCars && (
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-400">
-                    <ClassBadge cls={team.class} size="xs" /> #{team.number} · luvas {formatMoney(carFee)}
+                    <ClassBadge cls={entry.class} size="xs" /> {carLabel(entry)} · luvas {formatMoney(carFee)}
                   </div>
                 )}
-                {team.drivers.map(current => {
+                {entry.drivers.map(current => {
                   const penalty = releaseCost(current, racesLeft);
                   const total = carFee + penalty;
                   const canAfford = funds >= total;
@@ -194,39 +198,43 @@ const DriversTab = ({ game, onSignDriver, onSetStarter, onSwapDrivers }) => {
   const [pending, setPending] = useState(null);
   const simulatorLevel = player.facilities?.simulator ?? 1;
   const racesLeft = Math.max(1, TRACKS.length - game.raceIndex);
+  // Preços do mercado na escala da organização (Hypercar se tiver programa lá)
+  const scale = mainClass(player);
   const market = useMemo(
     () =>
       [...game.driversPool]
-        .filter(driver => !onlyAffordable || signingFee(driver, player.class) <= player.funds)
+        .filter(driver => !onlyAffordable || signingFee(driver, scale) <= player.funds)
         .sort(SORTS[sort].fn),
-    [game.driversPool, onlyAffordable, sort, player.class, player.funds]
+    [game.driversPool, onlyAffordable, sort, scale, player.funds]
   );
   return (
     <div className="flex flex-col xl:flex-row gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-20 md:pb-0">
       <div className="xl:w-[38%] space-y-4">
-        {entries.map(team => {
-          const otherTeam = twoCars ? entries.find(item => item.id !== team.id) : null;
+        {entries.map(entry => {
+          const otherEntries = entries.filter(item => item.id !== entry.id);
           return (
-            <div className="space-y-4" key={team.id}>
+            <div className="space-y-4" key={entry.id}>
               <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-2 flex items-center gap-2">
-                {twoCars ? (
-                  <>
-                    <ClassBadge cls={team.class} size="xs" /> #{team.number} · {className(team.class)}
-                    <span className="text-gray-600 normal-case tracking-normal">({team.name})</span>
-                  </>
-                ) : (
-                  `Line-up (${team.drivers.length} pilotos)`
-                )}
+                <ClassBadge cls={entry.class} size="xs" /> {carLabel(entry)}
+                <span className="text-gray-600 normal-case tracking-normal">({entry.drivers.length} pilotos)</span>
               </h3>
-              {team.drivers.map((driver, index) => (
-                <DriverCard driver={driver} index={index} team={team} onSetStarter={onSetStarter} otherTeam={otherTeam} onSwap={onSwapDrivers} key={driver.id} />
+              {entry.drivers.map((driver, index) => (
+                <DriverCard
+                  driver={driver}
+                  index={index}
+                  entry={entry}
+                  onSetStarter={onSetStarter}
+                  otherEntries={otherEntries}
+                  onSwap={onSwapDrivers}
+                  key={driver.id}
+                />
               ))}
             </div>
           );
         })}
         <p className="text-[11px] text-gray-500">
           O titular larga a corrida. Os outros entram nas trocas de piloto durante os pit stops.
-          {twoCars ? " Trocar pilotos de carro não muda o salário do contrato." : ""}
+          {twoCars ? " Trocar pilotos de carro não muda o salário do contrato; contratações pagam as luvas na classe do carro." : ""}
         </p>
       </div>
       <div className="xl:flex-1 bg-gray-900 border border-gray-800 rounded-xl flex flex-col overflow-hidden h-auto xl:h-[calc(100vh-11rem)]">
@@ -269,7 +277,7 @@ const DriversTab = ({ game, onSignDriver, onSetStarter, onSwapDrivers }) => {
             </thead>
             <tbody className="divide-y divide-gray-800 text-sm">
               {market.map(driver => {
-                const fee = signingFee(driver, player.class);
+                const fee = signingFee(driver, scale);
                 const repNeeded = requiredReputation(driver);
                 const locked = (player.reputation ?? 0) < repNeeded;
                 return (
@@ -279,7 +287,7 @@ const DriversTab = ({ game, onSignDriver, onSetStarter, onSwapDrivers }) => {
                         <Flag driver={driver} /> {driver.name}
                       </div>
                       <div className="text-[10px] text-gray-500 flex items-center gap-2 mt-0.5">
-                        <CategoryBadge rating={driver.rating} /> {driver.age} anos · {formatMoney(driverWageFor(driver, player.class))}/corrida
+                        <CategoryBadge rating={driver.rating} /> {driver.age} anos · {formatMoney(driverWageFor(driver, scale))}/corrida
                       </div>
                     </td>
                     <td className="p-3 text-center">

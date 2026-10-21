@@ -1,7 +1,8 @@
 import { Briefcase, Crown, DollarSign, Gem, Lock, Medal, ShieldCheck, Trophy, TrendingUp, Zap } from "lucide-react";
-import { SPONSORS, TRACKS, TWO_CAR_SPONSOR_BONUS } from "../../data/constants";
+import { CLASS_RULES, EXTRA_CAR_SPONSOR_BONUS, MAX_SPONSOR_EXPOSURE, SPONSORS, TRACKS } from "../../data/constants";
 import { formatMoney } from "../../utils/helpers";
-import { sponsorOffer, sponsorSlots, sponsorMultiplier } from "../../engine/economy";
+import { sponsorGoal, sponsorOffer, sponsorSlots, sponsorMultiplier } from "../../engine/economy";
+import { mainClass, playerEntries, playerClasses, sponsorExposure } from "../../engine/team";
 
 const TYPE_INFO = {
   FIXED: { icon: ShieldCheck, color: "text-blue-400", label: "Fixo" },
@@ -22,18 +23,26 @@ const TypeIcon = ({ type, size = 20 }) => {
   return <Icon size={size} className={info.color} />;
 };
 
-const termsLine = contract => {
+// Meta do contrato: com programas nas duas classes, cada carro é conferido pela meta da própria classe
+const goalText = (contract, classes) => {
+  if (classes.length > 1 && contract.goal && typeof contract.goal === "object") {
+    return classes.map(cls => `Top ${sponsorGoal(contract, cls) ?? contract.goalPosition} ${CLASS_RULES[cls].short}`).join(" / ");
+  }
+  return `Top ${contract.goalPosition}`;
+};
+
+const termsLine = (contract, classes = []) => {
   switch (contract.type) {
     case "GAMBLE":
       return `Entre $0 e ${formatMoney(contract.maxRandom)} por corrida`;
     case "PERFORMANCE":
-      return `${formatMoney(contract.perRacePayment)} por corrida se terminar no Top ${contract.goalPosition} da classe`;
+      return `${formatMoney(contract.perRacePayment)} por corrida se terminar no ${goalText(contract, classes)} da classe`;
     case "PODIUM":
       return `${formatMoney(contract.perRacePayment)} por corrida + ${formatMoney(contract.bonus)} por pódio`;
     case "WIN":
       return `${formatMoney(contract.perRacePayment)} por corrida + ${formatMoney(contract.bonus)} por vitória`;
     case "LEMANS":
-      return `${formatMoney(contract.perRacePayment)} por corrida + ${formatMoney(contract.bonus)} com Top ${contract.goalPosition} em Le Mans`;
+      return `${formatMoney(contract.perRacePayment)} por corrida + ${formatMoney(contract.bonus)} com ${goalText(contract, classes)} em Le Mans`;
     default:
       return `${formatMoney(contract.perRacePayment)} por corrida`;
   }
@@ -46,14 +55,20 @@ const SponsorsTab = ({ game, onSignSponsor }) => {
   const market = SPONSORS.filter(sponsor => !activeIds.includes(sponsor.id));
   const multiplier = sponsorMultiplier(player);
   const leMansDone = game.raceIndex > TRACKS.findIndex(track => track.id === "lemans");
-  const sister = game.sisterTeam;
+  const cars = playerEntries(game);
+  const classes = playerClasses(game);
+  const scale = mainClass(player);
+  const exposure = sponsorExposure(cars.length);
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-      {sister && (
+      {cars.length > 1 && (
         <div className="bg-green-900/20 border border-green-800/50 rounded-xl p-4 text-sm text-green-100">
-          <span className="font-black">Dois carros na pista: patrocinadores pagam +{Math.round(TWO_CAR_SPONSOR_BONUS * 100)}% (exposição).</span>{" "}
+          <span className="font-black">
+            {cars.length} carros na pista: patrocinadores pagam +{Math.round((exposure - 1) * 100)}% pela exposição.
+          </span>{" "}
           <span className="text-green-200/80">
-            Metas de desempenho, pódio, vitória e Le Mans são conferidas em cada carro pela meta da classe dele (#{player.number} e #{sister.number}): vale o melhor resultado.
+            Cada carro além do primeiro soma +{Math.round(EXTRA_CAR_SPONSOR_BONUS * 100)}% (máximo +{Math.round(MAX_SPONSOR_EXPOSURE * 100)}%). Metas de desempenho, pódio,
+            vitória e Le Mans são conferidas em cada carro ({cars.map(entry => `#${entry.number}`).join(", ")}) pela meta da classe dele: vale o melhor resultado.
           </span>
         </div>
       )}
@@ -78,7 +93,7 @@ const SponsorsTab = ({ game, onSignSponsor }) => {
                   <TypeIcon type={contract.type} />
                 </div>
                 <div className="text-xs text-gray-400 mb-3">{contract.industry}</div>
-                <p className="text-xs text-green-300 font-bold mb-3 relative z-10">{termsLine(contract)}</p>
+                <p className="text-xs text-green-300 font-bold mb-3 relative z-10">{termsLine(contract, classes)}</p>
                 <div className="flex justify-between text-sm border-t border-gray-700 pt-2 relative z-10">
                   <span className="text-gray-500">Restam</span>
                   <span className="font-mono text-white">{contract.remaining} corridas</span>
@@ -94,11 +109,14 @@ const SponsorsTab = ({ game, onSignSponsor }) => {
         </h3>
         <p className="text-xs text-gray-500 mb-4">
           Patrocinadores maiores exigem reputação. Sua reputação: <span className="text-yellow-400 font-bold">{Math.round(player.reputation ?? 0)}</span>.
-          {player.class === "LMGT3" && " Na LMGT3 os valores são menores (1/3 da Hypercar)."}
+          {scale === "LMGT3"
+            ? " Na LMGT3 os valores são menores (1/3 da Hypercar)."
+            : classes.length > 1 && " Com programa na Hypercar, as ofertas seguem a escala da Hypercar."}
+          {cars.length === 1 && ` Um segundo carro renderia +${Math.round(EXTRA_CAR_SPONSOR_BONUS * 100)}% de exposição.`}
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {market.map(sponsor => {
-            const offer = sponsorOffer(sponsor, player.class);
+            const offer = sponsorOffer(sponsor, scale);
             const locked = (player.reputation ?? 0) < (sponsor.minReputation ?? 0);
             const full = player.sponsors.length >= slots;
             const pointless = sponsor.type === "LEMANS" && leMansDone && offer.duration < TRACKS.length - game.raceIndex + 4;
@@ -118,7 +136,7 @@ const SponsorsTab = ({ game, onSignSponsor }) => {
                       <span className="text-gray-400">Luvas:</span>
                       <span className="text-green-400 font-bold font-mono">{formatMoney(offer.signingBonus)}</span>
                     </div>
-                    <div className="text-xs text-white font-bold">{termsLine(offer)}</div>
+                    <div className="text-xs text-white font-bold">{termsLine(offer, classes)}</div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Duração:</span>
                       <span className="text-white font-bold font-mono">{offer.duration} etapas</span>

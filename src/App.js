@@ -540,7 +540,7 @@ function App() {
     notify(
       champions.length
         ? `Temporada encerrada. VOCÊ FOI CAMPEÃO DE EQUIPES ${champions.length > 1 ? "NAS DUAS CLASSES" : `DA ${CLASS_RULES[champions[0]].label.toUpperCase()}`}!`
-        : `Temporada encerrada. Campeões de equipes: ${result.summary.hyperChampion?.name ?? "—"} (Hypercar) e ${result.summary.gt3Champion?.name ?? "—"} (LMGT3).`,
+        : `Temporada encerrada. Campeões de equipes: ${result.summary.hyperChampion?.label ?? "—"} (Hypercar) e ${result.summary.gt3Champion?.label ?? "—"} (LMGT3).`,
       "success"
     );
     if (result.cut) {
@@ -638,7 +638,18 @@ function App() {
           archive={game.archive}
           currentSeason={game.season}
           currentStandings={CLASSES.flatMap(cls =>
-            teamStandings(game, cls).map(row => ({ id: row.team.id, name: row.team.name, class: cls, color: row.team.color, points: row.points, stats: row.stats })))}
+            teamStandings(game, cls).map(row => ({
+              id: row.team.id,
+              rowKey: row.rowKey,
+              perCar: row.perCar,
+              name: row.team.name,
+              label: row.perCar ? `${row.team.name} #${row.entries[0]?.number}` : row.team.name,
+              numbers: row.entries.map(entry => entry.number),
+              class: cls,
+              color: row.team.color,
+              points: row.points,
+              stats: row.stats
+            })))}
           onClose={() => setModal(null)}
         />
       )}

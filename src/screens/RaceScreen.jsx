@@ -47,7 +47,7 @@ const RADIO_TONES = {
 
 // Diferença para o carro de referência ("LÍDER", "+1L", "+3.2s")
 const gapText = (car, reference, elapsed) => {
-  if (!reference || car.teamId === reference.teamId) {
+  if (!reference || car.entryId === reference.entryId) {
     return "LÍDER";
   }
   if (car.status === "DNF") {
@@ -243,17 +243,21 @@ const PitPlanner = ({ car, raceState, plan, setPlan, onRequest, onCancel, onAuto
   );
 };
 
-// Seletor dos carros do jogador (equipe com dois carros)
+// Carros do jogador: Hypercar primeiro, depois pelo número
+const sortPlayers = cars =>
+  [...cars].sort((a, b) => (a.class === b.class ? Number(a.number) - Number(b.number) : a.class === "HYPERCAR" ? -1 : 1));
+
+// Seletor dos carros do jogador (equipe com mais de um carro)
 const CarSelector = ({ players, selectedId, onSelect, radio, elapsed }) => (
-  <div className="grid grid-cols-2 gap-2">
+  <div className={`grid gap-2 ${players.length > 2 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2"}`}>
     {players.map(car => {
-      const alert = radio.some(message => message.teamId === car.teamId && message.tone === "danger" && elapsed - message.t < 90);
+      const alert = radio.some(message => message.entryId === car.entryId && message.tone === "danger" && elapsed - message.t < 90);
       const status = car.status === "DNF" ? "DNF" : car.status === "PIT" ? "PIT" : car.boxRequested ? "BOX" : null;
       return (
         <button
-          key={car.teamId}
-          onClick={() => onSelect(car.teamId)}
-          className={`relative flex items-center gap-2 px-2 py-1.5 rounded-lg border text-left ${selectedId === car.teamId ? "bg-blue-900/40 border-blue-500" : "bg-gray-950 border-gray-800 hover:border-gray-600"}`}
+          key={car.entryId}
+          onClick={() => onSelect(car.entryId)}
+          className={`relative flex items-center gap-2 px-2 py-1.5 rounded-lg border text-left ${selectedId === car.entryId ? "bg-blue-900/40 border-blue-500" : "bg-gray-950 border-gray-800 hover:border-gray-600"}`}
         >
           <span className="text-sm font-black italic text-white">#{car.number}</span>
           <span className={`text-[8px] font-black px-1 py-0.5 rounded ${car.class === "HYPERCAR" ? "bg-red-900 text-red-200" : "bg-yellow-900 text-yellow-200"}`}>{classLabel(car.class)}</span>
@@ -278,7 +282,7 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
   const [viewClass, setViewClass] = useState("ALL");
   const [mobileView, setMobileView] = useState("map");
   const [feedTab, setFeedTab] = useState("radio");
-  const [selectedId, setSelectedId] = useState(() => (raceState.grid.find(car => car.teamId === "player") || raceState.grid.find(car => car.isPlayer))?.teamId);
+  const [selectedId, setSelectedId] = useState(() => sortPlayers(raceState.grid.filter(car => car.isPlayer))[0]?.entryId);
   const [plans, setPlans] = useState({});
   const [radioFilter, setRadioFilter] = useState("ALL");
   const finished = raceState.finished;
@@ -323,14 +327,15 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
     return () => window.removeEventListener("keydown", onKey);
   }, [finished]);
 
-  const players = raceState.grid.filter(car => car.isPlayer).sort((a, b) => (a.teamId === "player" ? -1 : b.teamId === "player" ? 1 : 0));
+  const players = sortPlayers(raceState.grid.filter(car => car.isPlayer));
   const twoCars = players.length > 1;
-  const player = players.find(car => car.teamId === selectedId) || players[0];
+  const player = players.find(car => car.entryId === selectedId) || players[0];
   const est = player ? estimateStint(player, raceState) : null;
   const defaultPlan = { tyres: raceState.trackWetness > 40 ? "WET" : "MEDIUM", driverSwap: null, repair: true };
-  const plan = (player && plans[player.teamId]) || defaultPlan;
-  const setPlan = next => player && setPlans(prev => ({ ...prev, [player.teamId]: next }));
-  const sameClassPair = twoCars && players[0].class === players[1].class;
+  const plan = (player && plans[player.entryId]) || defaultPlan;
+  const setPlan = next => player && setPlans(prev => ({ ...prev, [player.entryId]: next }));
+  // Classes em que o jogador tem dois carros (ordens de equipe)
+  const pairClasses = ["HYPERCAR", "LMGT3"].filter(cls => players.filter(car => car.class === cls).length > 1);
   const L = raceState.track.length;
   const visibleGrid = useMemo(() => {
     const list = viewClass === "ALL" ? raceState.grid : raceState.grid.filter(car => car.class === viewClass);
@@ -341,7 +346,7 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
   const night = raceState.night || 0;
   const trend = raceState.targetWetness - raceState.trackWetness;
   const neutral = raceState.neutral;
-  const radio = [...raceState.radio].filter(message => radioFilter === "ALL" || message.teamId === radioFilter || !message.teamId).reverse();
+  const radio = [...raceState.radio].filter(message => radioFilter === "ALL" || message.entryId === radioFilter || !message.entryId).reverse();
   const events = [...raceState.events].filter(event => feedTab === "all" || event.important).reverse().slice(0, 60);
 
   const handleSimulate = () => {
@@ -378,7 +383,7 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
             {players
               .filter(car => car.boxRequested && car.status !== "PIT")
               .map(car => (
-                <div className="bg-blue-600 text-white font-bold px-2 py-1 rounded text-[10px] animate-pulse" key={car.teamId}>
+                <div className="bg-blue-600 text-white font-bold px-2 py-1 rounded text-[10px] animate-pulse" key={car.entryId}>
                   BOX{twoCars ? ` #${car.number}` : ""}
                 </div>
               ))}
@@ -465,7 +470,7 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
               night={night}
               neutral={neutral?.type}
               playerColor={game.playerTeam.color}
-              selectedId={twoCars ? player?.teamId : null}
+              selectedId={twoCars ? player?.entryId : null}
             />
             {!running && !finished && raceState.elapsed === 0 && (
               <button
@@ -482,7 +487,7 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
               <div className="absolute inset-x-4 bottom-4 bg-black/80 border border-green-600 rounded-xl p-3 text-center animate-in fade-in zoom-in-95">
                 <div className="text-xs text-green-400 font-bold uppercase">Bandeira quadriculada</div>
                 {players.map(car => (
-                  <div className={`${twoCars ? "text-lg" : "text-2xl"} font-black italic`} key={car.teamId}>
+                  <div className={`${players.length > 2 ? "text-sm md:text-base" : twoCars ? "text-lg" : "text-2xl"} font-black italic`} key={car.entryId}>
                     {twoCars ? `#${car.number} · ` : ""}
                     {car.status === "DNF" ? `Abandono: ${car.dnfReason}` : `P${car.classPosition} na classe${twoCars ? ` ${classLabel(car.class)}` : ""}`}
                   </div>
@@ -492,7 +497,7 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
           </div>
           {player && est && (
             <div className="bg-gray-900 border-t border-gray-800 p-3 md:p-4 pb-6 md:pb-4 shadow-[0_-5px_15px_rgba(0,0,0,0.3)] z-10 space-y-3">
-              {twoCars && <CarSelector players={players} selectedId={player.teamId} onSelect={setSelectedId} radio={raceState.radio} elapsed={raceState.elapsed} />}
+              {twoCars && <CarSelector players={players} selectedId={player.entryId} onSelect={setSelectedId} radio={raceState.radio} elapsed={raceState.elapsed} />}
               <PlayerPanel car={player} raceState={raceState} est={est} />
               <div className="grid grid-cols-3 gap-2">
                 {[
@@ -502,7 +507,7 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
                 ].map(([id, Icon, label, activeClass]) => (
                   <button
                     key={id}
-                    onClick={() => changeStrategy(id, player.teamId)}
+                    onClick={() => changeStrategy(id, player.entryId)}
                     className={`py-2 rounded flex flex-col items-center justify-center gap-0.5 border ${player.strategy === id ? `${activeClass} text-white` : "bg-gray-800 border-gray-700 text-gray-400"}`}
                     title={`Ritmo ${Math.round((STRATEGIES[id].pace - 1) * 100)}% · consumo x${STRATEGIES[id].fuel} · pneus x${STRATEGIES[id].tyre}`}
                   >
@@ -517,37 +522,46 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
                 plan={plan}
                 setPlan={setPlan}
                 autoStrategy={player.autoStrategy}
-                onAuto={enabled => toggleAutoStrategy(enabled, player.teamId)}
-                onRequest={() => requestPit(plan, player.teamId)}
-                onCancel={() => cancelPit(player.teamId)}
+                onAuto={enabled => toggleAutoStrategy(enabled, player.entryId)}
+                onRequest={() => requestPit(plan, player.entryId)}
+                onCancel={() => cancelPit(player.entryId)}
               />
-              {sameClassPair && !finished && (
-                <div className="bg-gray-950 border border-gray-800 rounded-lg p-2 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold uppercase text-gray-500">Ordens de equipe</span>
-                    <div className="flex bg-gray-900 rounded p-0.5 border border-gray-700">
-                      {Object.values(TEAM_ORDERS).map(order => (
-                        <button
-                          key={order.id}
-                          onClick={() => changeTeamOrders(order.id)}
-                          title={order.description}
-                          className={`px-2 py-1 text-[10px] font-bold rounded ${(raceState.teamOrders || "FREE") === order.id ? (order.id === "HOLD" ? "bg-orange-600 text-white" : "bg-blue-600 text-white") : "text-gray-400"}`}
-                        >
-                          {order.label}
-                        </button>
-                      ))}
+              {!finished &&
+                pairClasses.map(cls => {
+                  const pair = players.filter(car => car.class === cls);
+                  const orders = raceState.teamOrders?.[cls] || "FREE";
+                  return (
+                    <div className="bg-gray-950 border border-gray-800 rounded-lg p-2 space-y-1.5" key={cls}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold uppercase text-gray-500 flex items-center gap-1.5">
+                          Ordens de equipe
+                          <span className={`text-[8px] font-black px-1 py-0.5 rounded ${cls === "HYPERCAR" ? "bg-red-900 text-red-200" : "bg-yellow-900 text-yellow-200"}`}>{classLabel(cls)}</span>
+                          <span className="text-gray-400 font-mono normal-case">{pair.map(car => `#${car.number}`).join(" · ")}</span>
+                        </span>
+                        <div className="flex bg-gray-900 rounded p-0.5 border border-gray-700">
+                          {Object.values(TEAM_ORDERS).map(order => (
+                            <button
+                              key={order.id}
+                              onClick={() => changeTeamOrders(cls, order.id)}
+                              title={order.description}
+                              className={`px-2 py-1 text-[10px] font-bold rounded ${orders === order.id ? (order.id === "HOLD" ? "bg-orange-600 text-white" : "bg-blue-600 text-white") : "text-gray-400"}`}
+                            >
+                              {order.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => swapCars(cls)}
+                        disabled={!canSwapTeamCars(raceState, cls)}
+                        className="w-full py-1.5 rounded border text-[10px] font-bold uppercase flex items-center justify-center gap-1 bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-40"
+                        title="O carro da frente abre passagem (os dois precisam estar juntos na pista)"
+                      >
+                        <Repeat size={12} /> Inverter posições
+                      </button>
                     </div>
-                  </div>
-                  <button
-                    onClick={swapCars}
-                    disabled={!canSwapTeamCars(raceState)}
-                    className="w-full py-1.5 rounded border text-[10px] font-bold uppercase flex items-center justify-center gap-1 bg-gray-800 border-gray-600 text-gray-200 hover:bg-gray-700 disabled:opacity-40"
-                    title="O carro da frente abre passagem (os dois precisam estar juntos na pista)"
-                  >
-                    <Repeat size={12} /> Inverter posições
-                  </button>
-                </div>
-              )}
+                  );
+                })}
               <div>
                 <div className="flex gap-3 mb-1 border-b border-gray-800 items-end">
                   {[
@@ -565,7 +579,7 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
                   ))}
                   {twoCars && feedTab === "radio" && (
                     <div className="ml-auto flex gap-1 pb-1">
-                      {[["ALL", "Todos"], ...players.map(car => [car.teamId, `#${car.number}`])].map(([id, label]) => (
+                      {[["ALL", "Todos"], ...players.map(car => [car.entryId, `#${car.number}`])].map(([id, label]) => (
                         <button
                           key={id}
                           onClick={() => setRadioFilter(id)}
@@ -629,7 +643,7 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
                 const gained = car.classPosition < car.startClassPosition;
                 const lost = car.classPosition > car.startClassPosition;
                 return (
-                  <tr className={`${car.isPlayer ? "bg-blue-900/20" : index % 2 === 0 ? "bg-gray-900/20" : ""}`} key={car.teamId}>
+                  <tr className={`${car.isPlayer ? "bg-blue-900/20" : index % 2 === 0 ? "bg-gray-900/20" : ""}`} key={car.entryId}>
                     <td className="p-2 text-center font-mono text-gray-400 text-xs">
                       {viewClass === "ALL" ? car.position : car.classPosition}
                       <div className={`text-[8px] ${gained ? "text-green-500" : lost ? "text-red-500" : "text-gray-700"}`}>
@@ -688,7 +702,7 @@ const RaceScreen = ({ raceState, game, advance, simulateRest, requestPit, cancel
           </table>
           {raceState.grid.some(car => car.status === "DNF") && (
             <div className="p-3 text-[10px] text-gray-500 flex items-center gap-1.5">
-              <TriangleAlert size={12} /> Abandonos: {raceState.grid.filter(car => car.status === "DNF").map(car => `${car.teamName} (${car.dnfReason})`).join(", ")}
+              <TriangleAlert size={12} /> Abandonos: {raceState.grid.filter(car => car.status === "DNF").map(car => `${car.teamName} #${car.number} (${car.dnfReason})`).join(", ")}
             </div>
           )}
         </div>

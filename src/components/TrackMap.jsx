@@ -40,14 +40,14 @@ const TrackMap = ({ track, cars, viewClass = "ALL", night = 0, neutral = null, p
               color = "#eab308";
             }
             return {
-              id: car.teamId,
+              id: car.entryId,
               x,
               y,
               color,
               stroke: car.isPlayer ? "white" : "none",
               isPlayer: car.isPlayer,
               label: car.isPlayer ? (multi ? `#${car.number}` : "VOCÊ") : "LÍDER",
-              selected: car.isPlayer && (!multi || !selectedId || car.teamId === selectedId),
+              selected: car.isPlayer && (!multi || !selectedId || car.entryId === selectedId),
               isLeader: car.classPosition === 1,
               teamName: car.teamName,
               class: car.class

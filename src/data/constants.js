@@ -803,11 +803,13 @@ export const PART_LABELS = Object.fromEntries(Object.entries(PART_INFO).map(([ke
 // ---------------------------------------------------------------------------
 
 // Regras de cada classe para as equipes:
-// Hypercar: 1 ou 2 carros; no campeonato de equipes só o melhor carro de cada equipe pontua.
-// LMGT3: sempre 2 carros; no campeonato de equipes os dois carros somam pontos.
+// Hypercar: 1 ou 2 carros; no campeonato de equipes os pontos dos carros da equipe se somam (como no de fabricantes).
+// LMGT3: sempre 2 carros. Até 2026 cada carro é uma inscrição separada no campeonato de equipes;
+// a partir de 2027 (regulamento aprovado pela FIA em out/2026) os pontos dos dois carros se somam.
+// teamScoring: "COMBINED" (os carros da equipe somam) ou "PER_CAR" (cada carro pontua sozinho)
 export const CLASS_RULES = {
-  HYPERCAR: { minCars: 1, maxCars: 2, teamScoring: "BEST_CAR", label: "Hypercar", short: "HYP" },
-  LMGT3: { minCars: 2, maxCars: 2, teamScoring: "ALL_CARS", label: "LMGT3", short: "GT3" }
+  HYPERCAR: { minCars: 1, maxCars: 2, teamScoring: "COMBINED", label: "Hypercar", short: "HYP" },
+  LMGT3: { minCars: 2, maxCars: 2, teamScoring: "COMBINED", perCarUntil: 2026, label: "LMGT3", short: "GT3" }
 };
 export const CLASSES = ["HYPERCAR", "LMGT3"];
 

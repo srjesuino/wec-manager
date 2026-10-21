@@ -6,10 +6,10 @@ import { buildSeasonSummary, startNextSeason, regulationFor, validatePlan, planE
 import { applyBop, createWeekend, computeQualifying, createRaceState } from "../src/engine/weekend.js";
 import { simulateToEnd, swapTeamCars, setTeamOrders, canSwapTeamCars } from "../src/engine/race.js";
 import { buildRaceReport, applyRaceResults, teamRaceResults, racePoints } from "../src/engine/results.js";
-import { teamStandings, createObjective } from "../src/engine/career.js";
+import { teamStandings, teamRanking, createObjective } from "../src/engine/career.js";
 import { developAiTeam, evolveAiProfiles, INVESTMENT_RANGE, ENGINEERING_RANGE } from "../src/engine/ai.js";
 import { sandboxCreateTeam, sandboxUpdateTeam, sandboxDeleteTeam } from "../src/engine/sandbox.js";
-import { classEntries, classPrograms, playerEntries, teamEntries, programUpgradeCost } from "../src/engine/team.js";
+import { classEntries, classPrograms, playerEntries, teamEntries, programUpgradeCost, teamScoring } from "../src/engine/team.js";
 import { upgradeCost } from "../src/engine/economy.js";
 
 let failures = 0;
@@ -59,22 +59,27 @@ const myCars = (g, cls) => playerEntries(g).filter(entry => entry.class === cls)
   check("P&D com 1 carro custa o normal", programUpgradeCost(single, single.playerTeam, "HYPERCAR", "engine") === upgradeCost("HYPERCAR", single.playerTeam.programs.HYPERCAR.car, "engine", single.playerTeam.facilities));
 }
 
-// 2) Pontuação de equipes: Hypercar só o melhor carro (ordem refeita entre equipes); LMGT3 soma os dois carros
+// 2) Pontuação de equipes: na Hypercar os carros da equipe somam; na LMGT3 cada carro é uma linha até 2026
+//    e os dois carros somam a partir de 2027
 {
   const car = (teamId, classPos, finished = true, pole = false) => ({
     entryId: `${teamId}${classPos}`, teamId, teamName: teamId, color: "#fff", isPlayer: false, number: String(classPos), classPos, finished, pole,
     points: (finished ? racePoints(classPos) : 0) + (pole ? 1 : 0)
   });
   const results = [car("A", 1, true, true), car("A", 2), car("B", 3), car("C", 4), car("C", 5, false)];
-  const hyp = teamRaceResults(results, "HYPERCAR");
+  const hyp = teamRaceResults(results, "HYPERCAR", 1, 2025);
   const byTeam = id => hyp.find(row => row.teamId === id);
-  check("Hypercar: equipe A (1º e 2º) pontua só pelo melhor carro + pole", byTeam("A").points === 26 && byTeam("A").position === 1);
-  check("Hypercar: equipe B (3º carro) é a 2ª equipe", byTeam("B").position === 2 && byTeam("B").points === 18);
-  check("Hypercar: equipe C é a 3ª equipe", byTeam("C").position === 3 && byTeam("C").points === 15);
-  const gt3 = teamRaceResults(results, "LMGT3");
+  check("Hypercar: equipe A soma os dois carros (25+1+18)", byTeam("A").points === 44 && byTeam("A").position === 1 && byTeam("A").win);
+  check("Hypercar: equipe B (3º carro) é a 2ª equipe", byTeam("B").position === 2 && byTeam("B").points === 15);
+  check("Hypercar: abandono não pontua", byTeam("C").position === 3 && byTeam("C").points === 12);
+  const old = teamRaceResults(results, "LMGT3", 1, 2026);
+  check("LMGT3 2026: cada carro é uma linha do campeonato de equipes", old.length === 5 && old.every(row => row.perCar && row.cars.length === 1));
+  check("LMGT3 2026: o 2º carro da equipe A é a 2ª linha", old[1].teamId === "A" && old[1].points === 18 && old[1].position === 2);
+  const gt3 = teamRaceResults(results, "LMGT3", 1, 2027);
   const gt = id => gt3.find(row => row.teamId === id);
-  check("LMGT3: equipe A soma os dois carros (25+1+18)", gt("A").points === 44);
-  check("LMGT3: abandono não pontua", gt("C").points === 12);
+  check("LMGT3 2027: equipe A soma os dois carros (25+1+18)", gt3.length === 3 && gt("A").points === 44);
+  check("LMGT3 2027: abandono não pontua", gt("C").points === 12);
+  check("regra da LMGT3 muda em 2027", teamScoring("LMGT3", 2026) === "PER_CAR" && teamScoring("LMGT3", 2027) === "COMBINED" && teamScoring("HYPERCAR", 2025) === "COMBINED");
 }
 
 // 3) Temporada completa: pontos de carros e de equipes batem com as corridas
@@ -84,19 +89,35 @@ const myCars = (g, cls) => playerEntries(g).filter(entry => entry.class === cls)
   const carTotals = {};
   while (g.raceIndex < 4) {
     const { report, game } = playRace(g);
-    CLASSES.forEach(cls => {
-      totals[cls] += report.playerTeams[cls]?.points || 0;
-    });
+    totals.HYPERCAR += report.playerTeams.HYPERCAR?.points || 0;
     report.players.forEach(result => {
       carTotals[result.entryId] = (carTotals[result.entryId] || 0) + result.points;
     });
     check(`dois carros do jogador por classe na corrida (${report.track.id})`, report.players.length === 4);
+    check(`LMGT3 ${g.season}: uma linha por carro no resultado das equipes`, report.teams.LMGT3.length === carsIn(g, "LMGT3"));
     g = game;
   }
+  const gt3Cars = playerEntries(g).filter(entry => entry.class === "LMGT3");
   check("pontos de equipe acumulam (Hypercar)", g.playerTeam.programs.HYPERCAR.points === totals.HYPERCAR, `${g.playerTeam.programs.HYPERCAR.points} vs ${totals.HYPERCAR}`);
-  check("pontos de equipe acumulam (LMGT3)", g.playerTeam.programs.LMGT3.points === totals.LMGT3);
   check("pontos de carro acumulam", playerEntries(g).every(entry => entry.points === carTotals[entry.id]));
+  check("LMGT3 2025: classificação de equipes com uma linha por carro", teamStandings(g, "LMGT3").length === carsIn(g, "LMGT3") && teamStandings(g, "HYPERCAR").length === teamsIn(g, "HYPERCAR"));
+  check("LMGT3 2025: linha do jogador é a do melhor carro", teamStandings(g, "LMGT3").find(row => row.isPlayer).points === Math.max(...gt3Cars.map(entry => entry.points)));
+  check("LMGT3 2025: prêmio de fim de ano por equipe", teamRanking(g, "LMGT3").length === teamsIn(g, "LMGT3"));
   check("extrato com operação dos carros extras", g.playerTeam.ledger.at(-1).items.filter(item => item.label.startsWith("Operação do carro")).length === 3);
+}
+
+// 3b) Virada de 2026 para 2027: a LMGT3 passa a somar os dois carros e a meta muda de escala
+{
+  let g = createNewGame({ teamName: "Regra", cars: { LMGT3: 2 }, season: 2026 });
+  check("meta de 2026 é por carro", g.career.objectives.LMGT3.perCar && g.career.objectives.LMGT3.text.includes("um carro"));
+  g = playSeason(g);
+  const summary = buildSeasonSummary(g);
+  check("resumo de 2026 com uma linha por carro na LMGT3", summary.gt3.length === carsIn(g, "LMGT3") && summary.gt3[0].label.includes("#"));
+  const { game: next } = startNextSeason(g, { renew: {} });
+  check("temporada 2027", next.season === 2027);
+  check("meta de 2027 é por equipe", !next.career.objectives.LMGT3.perCar && next.career.objectives.LMGT3.position === createObjective(next, "LMGT3").position);
+  check("2027: uma linha por equipe na LMGT3", teamStandings(next, "LMGT3").length === teamsIn(next, "LMGT3"));
+  check("arquivo de 2026 guarda os carros", next.archive.history.at(-1).standings.filter(row => row.class === "LMGT3").length === carsIn(g, "LMGT3"));
 }
 
 // 4) Ordens de equipe por classe

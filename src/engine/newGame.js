@@ -213,7 +213,10 @@ const createDefaultGrid = (takenNames, usedNumbers) => {
 
 // cars: { HYPERCAR: 0–2, LMGT3: 0 ou 2 }; numbers: { HYPERCAR: [...], LMGT3: [...] } (opcional)
 // (series é aceito por compatibilidade: um Hypercar ou dois LMGT3)
-export const createNewGame = ({ teamName, series, cars, numbers, color, number, difficulty = "NORMAL", bopEnabled = true, season = 2025 }) => {
+// Temporada inicial de uma carreira nova
+export const START_SEASON = 2025;
+
+export const createNewGame = ({ teamName, series, cars, numbers, color, number, difficulty = "NORMAL", bopEnabled = true, season = START_SEASON }) => {
   const takenNames = new Set();
   const usedNumbers = new Set();
   const chosen = normalizeCars(cars || { [series || "HYPERCAR"]: series === "LMGT3" ? 2 : 1 });
@@ -368,8 +371,8 @@ const from41 = old => {
       programs[cls] = { ...newProgram({ ...source.car }), devTokens: source.devTokens ?? null, points: 0, stats: statsOf() };
     }
     const program = programs[cls];
-    // Pontos de equipe: melhor carro na Hypercar, soma na LMGT3
-    program.points = CLASS_RULES[cls].teamScoring === "BEST_CAR" ? Math.max(program.points, source.points || 0) : program.points + (source.points || 0);
+    // Pontos de equipe: soma dos carros
+    program.points += source.points || 0;
     ["wins", "podiums", "poles"].forEach(key => {
       program.stats[key] = Math.max(program.stats[key], statsOf(source)[key]);
     });

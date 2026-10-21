@@ -16,12 +16,12 @@ import {
   generateProgramNews,
   generateAiProgramNews
 } from "../utils/mediaEngine.js";
-import { teamStandings, carStandings, seasonReview, hypercarInvite, playerStanding } from "./career.js";
+import { teamStandings, teamRanking, carStandings, seasonReview, hypercarInvite } from "./career.js";
 import { developDriver, willRetire, fillAiVacancies, recruitStars, signDriverTo } from "./drivers.js";
 import { developAiTeams, evolveAiProfiles, aiAnnualBudget, aiConceptOffset, profileOf, gaussian } from "./ai.js";
 import { CAR_PARTS, seasonPrize, driverWageFor, carEntryFee, extraCarOperations, programAnnualBudget } from "./economy.js";
 import { freshPlayerCar, generateStaffMarket, withHomologation, playerObjectives, newProgram, newEntry, lineupFor, DEFAULT_PLAYER_NUMBERS } from "./newGame.js";
-import { PLAYER_ID, allowedCars, freeNumber, teamClasses } from "./team.js";
+import { PLAYER_ID, allowedCars, freeNumber, isPerCar, teamClasses } from "./team.js";
 
 // Ciclos de regulamento: a cada REGULATION_CYCLE temporadas, carros novos para todos.
 // No começo do ciclo quem acertou o conceito domina; perto do fim os custos altos fazem o grid se aproximar.
@@ -130,7 +130,10 @@ export const planBoardCut = (game, review) => {
 const standingRow = row => ({
   id: row.team.id,
   key: row.key,
+  rowKey: row.rowKey,
+  perCar: row.perCar,
   name: row.team.name,
+  label: row.perCar ? `${row.team.name} #${row.entries[0]?.number}` : row.team.name,
   class: row.cls,
   color: row.team.color,
   isPlayer: row.isPlayer,
@@ -147,7 +150,11 @@ export const buildSeasonSummary = game => {
   const review = seasonReview(game);
   const classes = teamClasses(game.playerTeam);
   const championClasses = classes.filter(cls => standingsOf(cls)[0]?.isPlayer);
-  const prize = classes.reduce((sum, cls) => sum + seasonPrize(cls, playerStanding(game, cls), standingsOf(cls).length), 0);
+  // Prêmio do campeonato pela posição da equipe (na regra PER_CAR, a do melhor carro entre as equipes)
+  const prize = classes.reduce((sum, cls) => {
+    const ranking = teamRanking(game, cls);
+    return sum + seasonPrize(cls, ranking.findIndex(row => row.isPlayer) + 1, ranking.length);
+  }, 0);
   const carChampion = cls => {
     const top = carStandings(game, cls)[0];
     return top ? { id: top.id, name: `${top.name} #${top.number}`, teamId: top.teamId, isPlayer: top.isPlayer, points: top.points, drivers: top.drivers.map(d => d.name) } : null;
@@ -198,16 +205,18 @@ export const startNextSeason = (game, decisions = {}) => {
   const transferMoves = [];
   const takenNames = new Set([...game.driversPool, ...game.entries.flatMap(entry => entry.drivers)].map(driver => driver.name));
   const standingsOf = cls => teamStandings(game, cls);
-  const positionOf = (teamId, cls) => standingsOf(cls).findIndex(row => row.team.id === teamId) + 1;
-  const prizeFor = (teamId, cls) => seasonPrize(cls, positionOf(teamId, cls), standingsOf(cls).length);
+  // Uma linha por equipe (prêmios e reação das matrizes)
+  const rankingOf = cls => teamRanking(game, cls);
+  const positionOf = (teamId, cls) => rankingOf(cls).findIndex(row => row.team.id === teamId) + 1;
+  const prizeFor = (teamId, cls) => seasonPrize(cls, positionOf(teamId, cls), rankingOf(cls).length);
   const teamChampions = new Set(CLASSES.map(cls => standingsOf(cls)[0]?.key).filter(Boolean));
   const carChampionIds = new Set(CLASSES.map(cls => summary.carChampions[cls]?.id).filter(Boolean));
   const crown = driver => ({ ...driver, stats: { ...driver.stats, titles: (driver.stats?.titles || 0) + 1 } });
 
   const seasonRecord = {
     year: game.season,
-    champion: summary.hyperChampion?.name,
-    gt3Champion: summary.gt3Champion?.name,
+    champion: summary.hyperChampion?.label,
+    gt3Champion: summary.gt3Champion?.label,
     carChampions: { HYPERCAR: summary.carChampions.HYPERCAR?.name, LMGT3: summary.carChampions.LMGT3?.name },
     standings: CLASSES.flatMap(cls => standingsOf(cls).map(row => archiveRow(game, row))),
     races: [...game.archive.currentSeasonRaces]
@@ -251,7 +260,7 @@ export const startNextSeason = (game, decisions = {}) => {
   };
 
   // A matriz e o departamento técnico de cada equipe da IA reagem à temporada
-  const evolved = evolveAiProfiles(game.teams, standingsOf, { difficulty: game.career.difficulty });
+  const evolved = evolveAiProfiles(game.teams, rankingOf, { difficulty: game.career.difficulty });
   const concepts = [];
   const carsOf = (teamId, cls = null) => game.entries.filter(entry => entry.teamId === teamId && (!cls || entry.class === cls)).length;
   let aiTeams = evolved.aiTeams.map(team => {
@@ -414,8 +423,11 @@ export const startNextSeason = (game, decisions = {}) => {
   next = withHomologation(next, reset);
   // Desenvolvimento de inverno da IA (já com as fichas novas)
   next.teams = developAiTeams(next.teams, team => next.entries.filter(entry => entry.teamId === team.id).length, 0.25);
-  // Metas: no regulamento novo (ou num programa novo) a diretoria olha só para a força do carro
-  const lastPositions = reset ? {} : Object.fromEntries(review.entries.map(entry => [entry.cls, entry.position]));
+  // Metas: no regulamento novo (ou num programa novo, ou se a regra de pontuação da classe mudou) a diretoria
+  // olha só para a força do carro
+  const lastPositions = reset
+    ? {}
+    : Object.fromEntries(review.entries.filter(entry => isPerCar(entry.cls, game.season) === isPerCar(entry.cls, nextSeason)).map(entry => [entry.cls, entry.position]));
   next.career.objectives = playerObjectives(next, lastPositions);
   next.newsFeed = [
     ...generateSeasonStartNews(nextSeason, next),

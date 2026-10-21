@@ -1,46 +1,43 @@
 import { useState } from "react";
 import { Check, ChevronRight, CircleHelp, CirclePlay, Flag, Gauge, Scale, Timer, Trophy, Upload, X, Zap } from "lucide-react";
-import { DIFFICULTIES, GAME_VERSION, PLAYER_COLORS, SERIES_CONFIG, PROGRAMS, PROGRAM_ORDER } from "../data/constants";
+import { CLASSES, CLASS_RULES, DIFFICULTIES, GAME_VERSION, PLAYER_COLORS, SERIES_CONFIG } from "../data/constants";
 import { formatMoney } from "../utils/helpers";
-import { defaultSisterName, nextCarNumber } from "../engine/newGame";
-import { secondCarStartBudget } from "../engine/economy";
+import { DEFAULT_PLAYER_NUMBERS, START_SEASON } from "../engine/newGame";
+import { teamScoringText } from "../engine/team";
+import { programStartBudget } from "../engine/economy";
 
-// Segunda etapa da nova carreira: identidade da equipe, dificuldade e BoP
+// Quantidades de carro por classe (Hypercar 0–2; LMGT3 sempre 0 ou 2)
+const CAR_OPTIONS = { HYPERCAR: [0, 1, 2], LMGT3: [0, 2] };
+
+// Segunda etapa da nova carreira: carros por classe, identidade da equipe, dificuldade e BoP
 const NewCareerModal = ({ series, teamName, onCancel, onStart }) => {
   const [color, setColor] = useState(PLAYER_COLORS[0]);
-  const [number, setNumber] = useState("17");
   const [difficulty, setDifficulty] = useState("NORMAL");
   const [bopEnabled, setBopEnabled] = useState(true);
-  const [program, setProgram] = useState("SINGLE");
-  const [sisterName, setSisterName] = useState("");
-  const [sisterNumber, setSisterNumber] = useState("");
-  const isHyper = series === "HYPERCAR";
-  const twoCars = program !== "SINGLE";
-  const mainClass = program === "DUAL_CLASS" ? "HYPERCAR" : series;
-  const sisterClass = program === "DUAL_CLASS" ? "LMGT3" : mainClass;
-  const defaultName = defaultSisterName(teamName, program === "SAME_CLASS");
-  const mainNumber = number || "17";
-  const rawSisterNumber = sisterNumber || nextCarNumber(mainNumber);
-  // Os dois carros nunca têm o mesmo número
-  const finalSisterNumber = rawSisterNumber === mainNumber ? nextCarNumber(mainNumber) : rawSisterNumber;
-  const startBudget = option =>
-    SERIES_CONFIG[mainClass].budget * option.budgetMult + (twoCars ? Math.floor(secondCarStartBudget(sisterClass) * option.budgetMult) : 0);
-  const classLabel = cls => (cls === "HYPERCAR" ? "Hypercar" : "LMGT3");
+  const [cars, setCars] = useState(() => (series === "LMGT3" ? { HYPERCAR: 0, LMGT3: 2 } : { HYPERCAR: 1, LMGT3: 0 }));
+  const [numbers, setNumbers] = useState(() => ({ HYPERCAR: [...DEFAULT_PLAYER_NUMBERS.HYPERCAR], LMGT3: [...DEFAULT_PLAYER_NUMBERS.LMGT3] }));
+  const totalCars = cars.HYPERCAR + cars.LMGT3;
+  const chosenNumbers = CLASSES.flatMap(cls => numbers[cls].slice(0, cars[cls]).map(value => value.trim()));
+  const duplicated = chosenNumbers.some((value, i) => chosenNumbers.indexOf(value) !== i);
+  const emptyNumber = chosenNumbers.some(value => !value);
+  const canStart = totalCars > 0 && !duplicated && !emptyNumber;
+  const startBudget = option => CLASSES.reduce((sum, cls) => sum + (cars[cls] ? programStartBudget(cls, cars[cls]) : 0), 0) * option.budgetMult;
+  const setNumber = (cls, index, value) =>
+    setNumbers(prev => ({ ...prev, [cls]: prev[cls].map((item, i) => (i === index ? value.replace(/\D/g, "").slice(0, 3) : item)) }));
   return (
     <div className="fixed inset-0 bg-gray-950/90 backdrop-blur-sm z-50 overflow-y-auto flex items-start md:items-center justify-center p-0 md:p-4">
       <div className="w-full md:max-w-3xl bg-gray-900 md:border border-gray-700 md:rounded-2xl shadow-2xl min-h-screen md:min-h-0 animate-in fade-in zoom-in-95 duration-300">
         <div className="p-5 md:p-6 border-b border-gray-800 flex justify-between items-start">
           <div>
-            <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded ${mainClass === "HYPERCAR" ? "bg-red-600 text-white" : "bg-yellow-600 text-black"}`}>
-              {classLabel(mainClass)}
-            </span>
-            {twoCars && (
-              <span className={`ml-1 px-2 py-0.5 text-[10px] font-black uppercase rounded ${sisterClass === "HYPERCAR" ? "bg-red-600 text-white" : "bg-yellow-600 text-black"}`}>
-                + {classLabel(sisterClass)}
-              </span>
-            )}
+            <div className="flex flex-wrap gap-1">
+              {CLASSES.filter(cls => cars[cls] > 0).map(cls => (
+                <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded ${cls === "HYPERCAR" ? "bg-red-600 text-white" : "bg-yellow-600 text-black"}`} key={cls}>
+                  {cars[cls]}× {CLASS_RULES[cls].label}
+                </span>
+              ))}
+            </div>
             <h2 className="text-2xl md:text-3xl font-black italic text-white mt-2">{teamName}</h2>
-            <p className="text-gray-400 text-sm">Defina a identidade da equipe e o tamanho do desafio.</p>
+            <p className="text-gray-400 text-sm">Monte a equipe: carros em cada classe, identidade e o tamanho do desafio.</p>
           </div>
           <button onClick={onCancel} className="bg-gray-800 hover:bg-gray-700 p-2 rounded-full text-white" aria-label="Fechar">
             <X size={20} />
@@ -48,95 +45,78 @@ const NewCareerModal = ({ series, teamName, onCancel, onStart }) => {
         </div>
         <div className="p-5 md:p-6 space-y-8">
           <div>
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Programa</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {PROGRAM_ORDER.map(id => {
-                const option = PROGRAMS[id];
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Carros da equipe</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {CLASSES.map(cls => {
+                const isHyper = cls === "HYPERCAR";
                 return (
-                  <button
-                    key={id}
-                    onClick={() => setProgram(id)}
-                    className={`text-left p-4 rounded-xl border-2 transition-all ${program === id ? "border-blue-500 bg-blue-900/20" : "border-gray-800 bg-gray-950 hover:border-gray-600"}`}
-                  >
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-black italic text-lg text-white">{option.label}</span>
-                      {program === id && <Check size={18} className="text-blue-400" />}
+                  <div className={`p-4 rounded-xl border-2 ${cars[cls] > 0 ? (isHyper ? "border-red-600/60 bg-red-900/10" : "border-yellow-600/60 bg-yellow-900/10") : "border-gray-800 bg-gray-950"}`} key={cls}>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="font-black italic text-lg text-white">{CLASS_RULES[cls].label}</span>
+                      <div className="flex bg-gray-900 rounded-lg p-0.5 border border-gray-700">
+                        {CAR_OPTIONS[cls].map(count => (
+                          <button
+                            key={count}
+                            onClick={() => setCars(prev => ({ ...prev, [cls]: count }))}
+                            className={`px-3 py-1 text-xs font-black rounded ${cars[cls] === count ? (isHyper ? "bg-red-600 text-white" : "bg-yellow-500 text-black") : "text-gray-400 hover:text-white"}`}
+                          >
+                            {count === 0 ? "Fora" : `${count} carro${count > 1 ? "s" : ""}`}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-400 leading-snug">{option.description}</p>
-                  </button>
+                    <p className="text-[11px] text-gray-400 leading-snug">
+                      {isHyper ? "1 ou 2 carros." : "Na LMGT3 a equipe inscreve sempre 2 carros."} {teamScoringText(cls, START_SEASON)}
+                    </p>
+                    {cars[cls] > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 mt-3">
+                        <span className="text-[10px] font-bold uppercase text-gray-500">Números</span>
+                        {numbers[cls].slice(0, cars[cls]).map((value, index) => (
+                          <input
+                            key={index}
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={3}
+                            value={value}
+                            onChange={e => setNumber(cls, index, e.target.value)}
+                            className="w-16 bg-gray-950 border border-gray-700 focus:border-blue-500 outline-none rounded-lg px-2 py-1.5 text-lg font-black italic text-center text-white"
+                            aria-label={`Número do carro ${index + 1} na ${CLASS_RULES[cls].label}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
-            {program === "DUAL_CLASS" && !isHyper && (
-              <p className="text-xs text-yellow-300 mt-2">No programa duplo o carro #1 é sempre o Hypercar e o carro #2 corre na LMGT3.</p>
-            )}
-            {program === "DUAL_CLASS" && isHyper && <p className="text-xs text-gray-400 mt-2">Carro #1 na Hypercar e carro #2 na LMGT3.</p>}
-            {twoCars && (
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 mt-4 bg-gray-950 border border-gray-800 rounded-xl p-4">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest" htmlFor="sister-name">
-                    Nome do 2º carro ({classLabel(sisterClass)})
-                  </label>
-                  <input
-                    id="sister-name"
-                    type="text"
-                    value={sisterName}
-                    placeholder={defaultName}
-                    onChange={e => setSisterName(e.target.value)}
-                    className="w-full mt-1 bg-gray-900 border border-gray-700 focus:border-blue-500 outline-none rounded-lg px-3 py-2 font-bold text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest" htmlFor="sister-number">
-                    Número
-                  </label>
-                  <input
-                    id="sister-number"
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={3}
-                    value={sisterNumber}
-                    placeholder={nextCarNumber(mainNumber)}
-                    onChange={e => setSisterNumber(e.target.value.replace(/\D/g, ""))}
-                    className="w-24 mt-1 block bg-gray-900 border border-gray-700 focus:border-blue-500 outline-none rounded-lg px-3 py-2 text-xl font-black italic text-center text-white"
-                  />
-                  {rawSisterNumber === mainNumber && <p className="text-[10px] text-yellow-400 mt-1">Número repetido: usaremos #{finalSisterNumber}.</p>}
-                </div>
-              </div>
-            )}
+            {totalCars === 0 && <p className="text-xs text-red-400 mt-2">Escolha pelo menos um carro.</p>}
+            {duplicated && <p className="text-xs text-red-400 mt-2">Cada carro precisa de um número diferente.</p>}
+            {emptyNumber && <p className="text-xs text-red-400 mt-2">Preencha o número de todos os carros.</p>}
+            <p className="text-[11px] text-gray-500 mt-2">
+              Cada carro além do primeiro custa logística por corrida, mas aumenta o orçamento e a exposição para os patrocinadores. Na mesma classe os carros dividem o
+              projeto: o P&D vale para os dois e custa 50% a mais.
+            </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-6">
-            <div>
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Cor da equipe</h3>
-              <div className="flex flex-wrap gap-3">
-                {PLAYER_COLORS.map(hex => (
-                  <button
-                    key={hex}
-                    onClick={() => setColor(hex)}
-                    className={`w-10 h-10 rounded-full border-4 transition-transform active:scale-90 flex items-center justify-center ${color === hex ? "border-white scale-110" : "border-gray-800"}`}
-                    style={{ backgroundColor: hex }}
-                    aria-label={`Cor ${hex}`}
-                  >
-                    {color === hex && <Check size={16} className={hex === "#f8fafc" || hex === "#eab308" ? "text-black" : "text-white"} />}
-                  </button>
+          <div>
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Cor da equipe</h3>
+            <div className="flex flex-wrap items-center gap-3">
+              {PLAYER_COLORS.map(hex => (
+                <button
+                  key={hex}
+                  onClick={() => setColor(hex)}
+                  className={`w-10 h-10 rounded-full border-4 transition-transform active:scale-90 flex items-center justify-center ${color === hex ? "border-white scale-110" : "border-gray-800"}`}
+                  style={{ backgroundColor: hex }}
+                  aria-label={`Cor ${hex}`}
+                >
+                  {color === hex && <Check size={16} className={hex === "#f8fafc" || hex === "#eab308" ? "text-black" : "text-white"} />}
+                </button>
+              ))}
+              <div className="flex gap-1 ml-2">
+                {chosenNumbers.map((value, i) => (
+                  <div className="w-11 h-11 rounded-lg flex items-center justify-center text-base font-black italic text-black shadow-lg" style={{ backgroundColor: color }} key={i}>
+                    {value || "?"}
+                  </div>
                 ))}
-              </div>
-            </div>
-            <div>
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Número do carro</h3>
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={3}
-                  value={number}
-                  onChange={e => setNumber(e.target.value.replace(/\D/g, ""))}
-                  className="w-24 bg-gray-950 border border-gray-700 focus:border-blue-500 outline-none rounded-lg px-3 py-2 text-2xl font-black italic text-center text-white"
-                  aria-label="Número do carro"
-                />
-                <div className="w-16 h-16 rounded-xl flex items-center justify-center text-2xl font-black italic text-black shadow-lg" style={{ backgroundColor: color }}>
-                  {number || "?"}
-                </div>
               </div>
             </div>
           </div>
@@ -157,7 +137,7 @@ const NewCareerModal = ({ series, teamName, onCancel, onStart }) => {
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-bold uppercase text-gray-500">
                     <span>Carro {option.startCar}</span>
                     <span>{formatMoney(startBudget(option))}</span>
-                    <span>{option.canBeFired ? "Pode ser demitido" : "Sem demissão"}</span>
+                    <span>{option.boardCuts ? "Conselho pode cortar carros" : "Sem cortes do conselho"}</span>
                   </div>
                 </button>
               ))}
@@ -184,20 +164,18 @@ const NewCareerModal = ({ series, teamName, onCancel, onStart }) => {
             Voltar
           </button>
           <button
+            disabled={!canStart}
             onClick={() =>
               onStart({
                 teamName,
-                series,
                 color,
-                number: mainNumber,
                 difficulty,
                 bopEnabled,
-                program,
-                sisterName: twoCars ? sisterName.trim() || defaultName : undefined,
-                sisterNumber: twoCars ? finalSisterNumber : undefined
+                cars: { ...cars },
+                numbers: Object.fromEntries(CLASSES.map(cls => [cls, numbers[cls].slice(0, cars[cls]).map(value => value.trim())]))
               })
             }
-            className="flex-1 py-4 rounded-xl font-black text-lg bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30 active:scale-95 transition-all uppercase tracking-wider"
+            className="flex-1 py-4 rounded-xl font-black text-lg bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30 active:scale-95 transition-all uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Começar carreira
           </button>
@@ -345,7 +323,7 @@ const MenuScreen = ({ initGame, importSaveFile, loadAutoSave, hasAutoSave, openH
                 </div>
                 <div className="flex items-center gap-3 text-xs md:text-sm text-gray-300">
                   <Trophy size={16} className="text-yellow-500" />
-                  <span>Orçamento: {formatMoney(SERIES_CONFIG.LMGT3.budget, 0)}</span>
+                  <span>Orçamento (2 carros): {formatMoney(programStartBudget("LMGT3", 2), 0)}</span>
                 </div>
                 <div className="w-full bg-yellow-600/20 h-1 mt-2 md:mt-4 rounded-full overflow-hidden">
                   <div className="bg-yellow-600 h-full w-[60%]" />
