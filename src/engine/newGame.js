@@ -8,15 +8,18 @@ import {
   DRIVERS_PER_CAR,
   PLAYER_COLORS,
   STAFF_ORDER,
-  TRACKS
+  TRACKS,
+  CLASSES,
+  CLASS_RULES,
+  DEFAULT_GRID
 } from "../data/constants.js";
-import { clamp, randInt, generateDriver, generateRookie, generateStaff, upgradeLegacyDriver } from "../utils/helpers.js";
+import { clamp, randInt, generateId, generateDriver, generateRookie, generateStaff, upgradeLegacyDriver } from "../utils/helpers.js";
 import { generateSeasonStartNews } from "../utils/mediaEngine.js";
 import { signDriverTo } from "./drivers.js";
-import { driverWageFor, sponsorGoal, econ, secondCarStartBudget, assignHomologation } from "./economy.js";
+import { driverWageFor, sponsorGoal, econ, homologationTokens, programStartBudget } from "./economy.js";
 import { createObjective } from "./career.js";
-import { SISTER_ID } from "./team.js";
-import { createAiProgram } from "./ai.js";
+import { PLAYER_ID, classPrograms, freeNumber, teamClasses } from "./team.js";
+import { createAiProfile } from "./ai.js";
 
 export const DEFAULT_SETTINGS = {
   raceSpeed: 1,
@@ -38,50 +41,7 @@ export const generateStaffMarket = () =>
     STAFF_ORDER.map(role => [role, [randInt(1, 2), randInt(2, 3), randInt(3, 4), randInt(4, 5)].map(stars => generateStaff(role, stars))])
   );
 
-const aiTier = index => (index < 3 ? 0 : index < 6 ? 1 : 2);
-
-// Equipe da IA: o índice define o nível (como no original: 3 de ponta, 3 de fábrica, o resto privadas)
-export const createAiTeam = (cls, name, index, takenNames, id = `${cls.toLowerCase()}_ai_${index}`) => {
-  const cfg = SERIES_CONFIG[cls];
-  const tier = aiTier(index);
-  const tierData = AI_TIERS[tier];
-  const program = createAiProgram(tier);
-  // Engenharia acima da média do nível = carro um pouco melhor desde o início
-  const level = cfg.aiLevels[tier] + Math.round((program.engineering - tierData.engineering) * 30);
-  const offset = () => Math.floor(Math.random() * 6) - 3;
-  const part = () => clamp(level + offset(), 30, 99);
-  const team = {
-    id,
-    name,
-    class: cls,
-    series: cls,
-    color: TEAM_DETAILS[name]?.color ?? "#9ca3af",
-    number: TEAM_DETAILS[name]?.number ?? String(40 + index),
-    tier,
-    program,
-    funds: cfg.budget * tierData.fundsMult,
-    points: 0,
-    stats: { wins: 0, podiums: 0, poles: 0 },
-    car: {
-      engine: part(),
-      aero: part(),
-      chassis: part(),
-      reliability: 80 + offset(),
-      efficiency: part(),
-      crew: part()
-    },
-    drivers: [],
-    sponsors: [],
-    championships: 0,
-    careerWins: 0,
-    support: Math.floor(tierData.support * cfg.economy),
-    annualBudget: Math.floor(tierData.annual * cfg.economy),
-    reputation: 85 - tier * 15,
-    bop: 0
-  };
-  team.drivers = Array.from({ length: DRIVERS_PER_CAR }, () => signDriverTo(generateDriver(level - 5, level + 5, null, takenNames), team, randInt(1, 3)));
-  return team;
-};
+export const aiTier = index => (index < 3 ? 0 : index < 6 ? 1 : 2);
 
 export const freshPlayerCar = difficulty => {
   const diff = DIFFICULTIES[difficulty] || DIFFICULTIES.NORMAL;
@@ -95,114 +55,171 @@ export const freshPlayerCar = difficulty => {
   };
 };
 
-const createPlayerTeam = ({ teamName, series, color, number, difficulty }, takenNames) => {
-  const cfg = SERIES_CONFIG[series];
-  const diff = DIFFICULTIES[difficulty] || DIFFICULTIES.NORMAL;
+// Projeto de uma equipe numa classe (carro, fichas, BoP e campeonato de equipes)
+export const newProgram = car => ({ car, devTokens: null, bop: 0, points: 0, stats: { wins: 0, podiums: 0, poles: 0 } });
+
+// Carro inscrito (número, pilotos e pontos do carro)
+export const newEntry = (teamId, cls, number) => ({
+  id: `car_${generateId()}`,
+  teamId,
+  class: cls,
+  number: String(number),
+  drivers: [],
+  points: 0,
+  stats: { wins: 0, podiums: 0, poles: 0 }
+});
+
+// Carro de nível "level" com pequenas variações por peça
+export const carAtLevel = level => {
+  const offset = () => Math.floor(Math.random() * 6) - 3;
+  const part = () => clamp(level + offset(), 20, 99);
+  return { engine: part(), aero: part(), chassis: part(), reliability: clamp(80 + offset(), 40, 99), efficiency: part(), crew: part() };
+};
+
+// Pilotos para um carro, em torno de um nível
+export const lineupFor = (entry, level, takenNames, { rookies = false } = {}) =>
+  Array.from({ length: DRIVERS_PER_CAR }, () =>
+    signDriverTo(rookies ? generateRookie(takenNames) : generateDriver(Math.max(45, level - 5), Math.min(97, level + 5), null, takenNames), entry, randInt(1, 3))
+  );
+
+// Equipe da IA com os seus carros
+// options: tier, cars, numbers, usedNumbers (Set), takenNames, id, color, ai, carLevel
+export const createAiTeam = (cls, name, options = {}) => {
+  const cfg = SERIES_CONFIG[cls];
+  const tier = options.tier ?? 2;
+  const tierData = AI_TIERS[tier];
+  const ai = options.ai || createAiProfile(tier);
+  const rules = CLASS_RULES[cls];
+  const cars = clamp(options.cars ?? rules.minCars, rules.minCars, rules.maxCars);
+  // Engenharia acima da média do nível = carro um pouco melhor desde o início
+  const level = options.carLevel ?? cfg.aiLevels[tier] + Math.round((ai.engineering - tierData.engineering) * 30);
   const team = {
-    id: "player",
+    id: options.id || `ai_${generateId()}`,
+    name,
+    class: cls,
+    color: options.color || TEAM_DETAILS[name]?.color || "#9ca3af",
+    tier,
+    ai,
+    funds: Math.floor(cfg.budget * tierData.fundsMult * (1 + (cars - 1) * 0.6)),
+    support: Math.floor(tierData.support * cfg.economy),
+    annualBudget: Math.floor(tierData.annual * cfg.economy),
+    reputation: 85 - tier * 15,
+    championships: 0,
+    careerWins: 0,
+    custom: !!options.custom,
+    programs: { [cls]: newProgram(carAtLevel(level)) }
+  };
+  const used = options.usedNumbers || new Set();
+  const preferred = options.numbers || TEAM_DETAILS[name]?.numbers || [];
+  const entries = Array.from({ length: cars }, (_, i) => {
+    let number = preferred[i] && !used.has(String(preferred[i])) ? String(preferred[i]) : null;
+    if (!number) {
+      number = String(preferred[i] || 40 + i);
+      while (used.has(number)) {
+        number = String((parseInt(number, 10) % 998) + 1);
+      }
+    }
+    used.add(number);
+    const entry = newEntry(team.id, cls, number);
+    entry.drivers = lineupFor(entry, level, options.takenNames || new Set());
+    return entry;
+  });
+  return { team, entries };
+};
+
+// Fichas de homologação da temporada para todos os programas do grid
+export const withHomologation = (game, newRegulation = false) => {
+  const tokens = new Map();
+  CLASSES.forEach(cls => {
+    const programs = classPrograms(game, cls);
+    const cars = programs.map(item => item.program.car);
+    programs.forEach(item => tokens.set(item.key, homologationTokens(item.program.car, cars, newRegulation)));
+  });
+  const apply = team => ({
+    ...team,
+    programs: Object.fromEntries(Object.entries(team.programs || {}).map(([cls, program]) => [cls, { ...program, devTokens: tokens.get(`${team.id}:${cls}`) ?? program.devTokens }]))
+  });
+  return { ...game, playerTeam: apply(game.playerTeam), teams: game.teams.map(apply) };
+};
+
+// Metas da diretoria para cada classe em que o jogador corre (lastPositions: { [classe]: posição anterior })
+export const playerObjectives = (game, lastPositions = {}) =>
+  Object.fromEntries(teamClasses(game.playerTeam).map(cls => [cls, createObjective(game, cls, lastPositions[cls] ?? null)]));
+
+// Números padrão dos carros do jogador
+export const DEFAULT_PLAYER_NUMBERS = { HYPERCAR: ["17", "18"], LMGT3: ["71", "72"] };
+
+// Normaliza a escolha de carros (Hypercar 0–2, LMGT3 0 ou 2, pelo menos um carro)
+export const normalizeCars = cars => {
+  const result = {};
+  CLASSES.forEach(cls => {
+    const rules = CLASS_RULES[cls];
+    const count = Number(cars?.[cls] || 0);
+    result[cls] = count <= 0 ? 0 : clamp(Math.max(count, rules.minCars), rules.minCars, rules.maxCars);
+  });
+  if (!result.HYPERCAR && !result.LMGT3) {
+    result.HYPERCAR = 1;
+  }
+  return result;
+};
+
+const createPlayerTeam = ({ teamName, color, difficulty, cars, numbers }, takenNames, usedNumbers) => {
+  const diff = DIFFICULTIES[difficulty] || DIFFICULTIES.NORMAL;
+  const classes = CLASSES.filter(cls => cars[cls] > 0);
+  const main = classes.includes("HYPERCAR") ? "HYPERCAR" : "LMGT3";
+  const team = {
+    id: PLAYER_ID,
     name: teamName || "My Racing Team",
-    class: series,
-    series,
     color: color || PLAYER_COLORS[0],
-    number: number || "17",
-    funds: Math.floor(cfg.budget * diff.budgetMult),
-    points: 0,
-    stats: { wins: 0, podiums: 0, poles: 0 },
-    car: freshPlayerCar(difficulty),
-    drivers: [],
+    funds: Math.floor(classes.reduce((sum, cls) => sum + programStartBudget(cls, cars[cls]), 0) * diff.budgetMult),
     sponsors: [],
     championships: 0,
     careerWins: 0,
-    reputation: cfg.startReputation,
+    reputation: SERIES_CONFIG[main].startReputation,
     facilities: defaultFacilities(),
     staff: defaultStaff(),
     ledger: [],
-    bop: 0
+    programs: Object.fromEntries(classes.map(cls => [cls, newProgram(freshPlayerCar(difficulty))]))
   };
-  team.drivers = Array.from({ length: DRIVERS_PER_CAR }, () => signDriverTo(generateDriver(65, 75, null, takenNames), team, randInt(1, 3)));
-  return team;
-};
-
-// Fichas de homologação da temporada para todos os carros do grid
-export const withHomologation = (game, newRegulation = false) => {
-  const teams = assignHomologation([game.playerTeam, ...(game.sisterTeam ? [game.sisterTeam] : []), ...game.aiTeams], newRegulation);
-  const byId = new Map(teams.map(team => [team.id, team]));
-  return {
-    ...game,
-    playerTeam: byId.get(game.playerTeam.id),
-    sisterTeam: game.sisterTeam ? byId.get(game.sisterTeam.id) : null,
-    aiTeams: game.aiTeams.map(team => byId.get(team.id))
-  };
-};
-
-// Nome padrão do segundo carro
-export const defaultSisterName = (teamName, sameClass) => `${teamName || "My Racing Team"} ${sameClass ? "B" : "GT"}`;
-
-export const nextCarNumber = number => String(((parseInt(number, 10) || 17) + 1) % 1000);
-
-// Segundo carro do jogador: mesma organização, carro e pilotos próprios
-export const createSisterTeam = (playerTeam, cls, { difficulty = "NORMAL", name, number, takenNames = new Set(), rookies = false } = {}) => {
-  const team = {
-    id: SISTER_ID,
-    name: name || defaultSisterName(playerTeam.name, cls === playerTeam.class),
-    class: cls,
-    series: cls,
-    color: playerTeam.color,
-    number: number || nextCarNumber(playerTeam.number),
-    points: 0,
-    stats: { wins: 0, podiums: 0, poles: 0 },
-    // Mesma classe = mesmo projeto do carro principal
-    car: cls === playerTeam.class ? { ...playerTeam.car } : freshPlayerCar(difficulty),
-    drivers: [],
-    championships: 0,
-    careerWins: 0,
-    bop: 0
-  };
-  team.drivers = Array.from({ length: DRIVERS_PER_CAR }, () =>
-    signDriverTo(rookies ? generateRookie(takenNames) : generateDriver(62, 72, null, takenNames), team, randInt(1, 3))
+  const entries = classes.flatMap(cls =>
+    Array.from({ length: cars[cls] }, (_, i) => {
+      const wanted = numbers?.[cls]?.[i] || DEFAULT_PLAYER_NUMBERS[cls][i];
+      let number = String(wanted);
+      while (usedNumbers.has(number)) {
+        number = String((parseInt(number, 10) % 998) + 1);
+      }
+      usedNumbers.add(number);
+      const entry = newEntry(PLAYER_ID, cls, number);
+      entry.drivers = lineupFor(entry, 70, takenNames);
+      return entry;
+    })
   );
-  return team;
+  return { team, entries };
 };
 
-// Tira da lista os nomes de equipe da IA que dão lugar aos carros do jogador
-const aiNamesFor = (cls, playerCars) => {
-  const names = [...TEAM_NAMES[cls]];
-  for (let i = 0; i < playerCars; i++) {
-    names.pop();
-  }
-  return names;
+// Grid padrão da IA (todas as equipes, independentemente de onde o jogador corre)
+const createDefaultGrid = (takenNames, usedNumbers) => {
+  const teams = [];
+  const entries = [];
+  CLASSES.forEach(cls => {
+    DEFAULT_GRID[cls].forEach(({ name, cars }, index) => {
+      const created = createAiTeam(cls, name, { tier: aiTier(index), cars, takenNames, usedNumbers, id: `${cls.toLowerCase()}_ai_${index}` });
+      teams.push(created.team);
+      entries.push(...created.entries);
+    });
+  });
+  return { teams, entries };
 };
 
-export const createNewGame = ({
-  teamName,
-  series,
-  color,
-  number,
-  difficulty = "NORMAL",
-  bopEnabled = true,
-  season = 2025,
-  program = "SINGLE",
-  sisterName,
-  sisterNumber
-}) => {
+// cars: { HYPERCAR: 0–2, LMGT3: 0 ou 2 }; numbers: { HYPERCAR: [...], LMGT3: [...] } (opcional)
+// (series é aceito por compatibilidade: um Hypercar ou dois LMGT3)
+export const createNewGame = ({ teamName, series, cars, numbers, color, number, difficulty = "NORMAL", bopEnabled = true, season = 2025 }) => {
   const takenNames = new Set();
-  // No programa duplo o carro principal é o Hypercar e o segundo carro corre na LMGT3
-  const mainClass = program === "DUAL_CLASS" ? "HYPERCAR" : series;
-  const playerTeam = createPlayerTeam({ teamName, series: mainClass, color, number, difficulty }, takenNames);
-  let sisterTeam = null;
-  if (program === "SAME_CLASS" || program === "DUAL_CLASS") {
-    const sisterClass = program === "DUAL_CLASS" ? "LMGT3" : mainClass;
-    sisterTeam = createSisterTeam(playerTeam, sisterClass, { difficulty, name: sisterName, number: sisterNumber, takenNames });
-    const diff = DIFFICULTIES[difficulty] || DIFFICULTIES.NORMAL;
-    playerTeam.funds += Math.floor(secondCarStartBudget(sisterClass) * diff.budgetMult);
-  }
-  const carsIn = cls => [playerTeam, sisterTeam].filter(team => team?.class === cls).length;
-  const hyperNames = aiNamesFor("HYPERCAR", carsIn("HYPERCAR"));
-  const gt3Names = aiNamesFor("LMGT3", carsIn("LMGT3"));
-  const aiTeams = [
-    ...hyperNames.map((name, index) => createAiTeam("HYPERCAR", name, index, takenNames)),
-    ...gt3Names.map((name, index) => createAiTeam("LMGT3", name, index, takenNames))
-  ];
+  const usedNumbers = new Set();
+  const chosen = normalizeCars(cars || { [series || "HYPERCAR"]: series === "LMGT3" ? 2 : 1 });
+  const playerNumbers = numbers || (number ? { HYPERCAR: [number, String(Number(number) + 1)], LMGT3: [number, String(Number(number) + 1)] } : null);
+  const player = createPlayerTeam({ teamName, color, difficulty, cars: chosen, numbers: playerNumbers }, takenNames, usedNumbers);
+  const grid = createDefaultGrid(takenNames, usedNumbers);
   const driversPool = [
     ...Array.from({ length: 25 }, () => ({ ...generateDriver(60, 95, null, takenNames), contractYears: 0 })),
     ...Array.from({ length: 5 }, () => generateRookie(takenNames))
@@ -210,9 +227,9 @@ export const createNewGame = ({
   let game = {
     version: GAME_VERSION,
     season,
-    playerTeam,
-    sisterTeam,
-    aiTeams,
+    playerTeam: player.team,
+    teams: grid.teams,
+    entries: [...player.entries, ...grid.entries],
     driversPool,
     staffMarket: generateStaffMarket(),
     raceIndex: 0,
@@ -225,22 +242,21 @@ export const createNewGame = ({
       difficulty,
       bopEnabled,
       confidence: 60,
-      objective: null,
-      objective2: null,
+      objectives: {},
       seasonsCompleted: 0,
       startSeason: season
     },
     settings: { ...DEFAULT_SETTINGS }
   };
   game = withHomologation(game);
-  game.career.objective = createObjective(game);
-  game.career.objective2 = sisterTeam ? createObjective(game, null, sisterTeam) : null;
-  game.newsFeed = generateSeasonStartNews(season, playerTeam, game.career.objective, sisterTeam);
+  game.career.objectives = playerObjectives(game);
+  game.newsFeed = generateSeasonStartNews(season, game);
   return game;
 };
 
 // ---------------------------------------------------------------------------
-// Saves antigos (v3.x): completa os dados que não existiam
+// Saves antigos
+// 3.x → formato 4.0 (um carro por equipe) → 4.2 (equipes com programas e carros)
 // ---------------------------------------------------------------------------
 
 const upgradeTeamDrivers = (team, takenNames) => {
@@ -255,40 +271,14 @@ const upgradeTeamDrivers = (team, takenNames) => {
   return drivers;
 };
 
-// Saves da 4.x: completa os campos novos (segundo carro)
-const normalizeSave = raw => {
-  let game = {
-    ...raw,
-    version: GAME_VERSION,
-    sisterTeam: raw.sisterTeam || null,
-    archive: { history: [], currentSeasonRaces: [], ...raw.archive },
-    career: { objective2: null, ...raw.career },
-    settings: { ...DEFAULT_SETTINGS, ...raw.settings },
-    aiTeams: (raw.aiTeams || []).map(team => (team.program ? team : { ...team, program: createAiProgram(team.tier ?? 2) }))
-  };
-  if (game.playerTeam.devTokens == null) {
-    game = withHomologation(game);
-  }
-  if (game.sisterTeam && !game.career.objective2) {
-    game.career.objective2 = createObjective(game, null, game.sisterTeam);
-  }
-  return game;
-};
-
-export const migrateSave = raw => {
-  if (!raw || !raw.playerTeam) {
-    throw new Error("Save inválido");
-  }
-  if (raw.version === GAME_VERSION || raw.version === "4.0") {
-    return normalizeSave(raw);
-  }
+// Save 3.x no formato da 4.0
+const legacyTo40 = raw => {
   const takenNames = new Set();
   const legacy = raw.playerTeam;
   const cls = legacy.class || raw.activeSeries || "HYPERCAR";
   const playerTeam = {
     ...legacy,
     class: cls,
-    series: cls,
     color: legacy.color || PLAYER_COLORS[0],
     number: legacy.number || "17",
     stats: { wins: 0, podiums: 0, poles: 0, ...legacy.stats },
@@ -296,7 +286,6 @@ export const migrateSave = raw => {
     facilities: legacy.facilities || defaultFacilities(),
     staff: legacy.staff || defaultStaff(),
     ledger: legacy.ledger || [],
-    bop: 0,
     sponsors: (legacy.sponsors || []).map(contract => ({
       ...contract,
       goalPosition: contract.goalPosition ?? (typeof contract.goal === "number" ? contract.goal : sponsorGoal(contract, cls)),
@@ -313,14 +302,12 @@ export const migrateSave = raw => {
     const next = {
       ...team,
       color: team.color || TEAM_DETAILS[team.name]?.color || "#9ca3af",
-      number: team.number || TEAM_DETAILS[team.name]?.number || String(40 + index),
+      number: team.number || TEAM_DETAILS[team.name]?.numbers?.[0] || String(40 + index),
       tier,
-      program: team.program || createAiProgram(tier),
       stats: { wins: 0, podiums: 0, poles: 0, ...team.stats },
       support: team.support ?? Math.floor(AI_TIERS[tier].support * cfg.economy),
       annualBudget: team.annualBudget ?? Math.floor(AI_TIERS[tier].annual * cfg.economy),
-      reputation: team.reputation ?? 85 - tier * 15,
-      bop: 0
+      reputation: team.reputation ?? 85 - tier * 15
     };
     next.drivers = upgradeTeamDrivers(next, takenNames);
     return next;
@@ -334,32 +321,170 @@ export const migrateSave = raw => {
   const history = archive.history || [];
   // No original, o save do fim de temporada ficava com raceIndex na última etapa (e a repetia ao carregar)
   const raceIndex = Math.min(TRACKS.length, Math.max(raw.raceIndex || 0, (archive.currentSeasonRaces || []).length));
-  const game = {
-    version: GAME_VERSION,
+  return {
     season: raw.season || 2025,
     playerTeam,
     aiTeams,
     driversPool,
     staffMarket: raw.staffMarket || generateStaffMarket(),
     raceIndex,
-    sisterTeam: null,
-    archive: {
-      history,
-      currentSeasonRaces: archive.currentSeasonRaces || []
-    },
+    archive: { history, currentSeasonRaces: archive.currentSeasonRaces || [] },
     newsFeed: raw.newsFeed || [],
     career: {
       difficulty: "CLASSIC",
       bopEnabled: true,
       confidence: 60,
-      objective: null,
-      objective2: null,
       seasonsCompleted: history.length,
       startSeason: (raw.season || 2025) - history.length
     },
     settings: { ...DEFAULT_SETTINGS }
   };
-  const migrated = withHomologation(game);
-  migrated.career.objective = createObjective(migrated);
-  return migrated;
+};
+
+const statsOf = item => ({ wins: 0, podiums: 0, poles: 0, ...item?.stats });
+
+// Save 4.0/4.1 (cada equipe = um carro; o jogador com carro principal e talvez um segundo carro)
+const from41 = old => {
+  const takenNames = new Set([...(old.driversPool || []), ...[old.playerTeam, old.sisterTeam, ...(old.aiTeams || [])].filter(Boolean).flatMap(t => t.drivers || [])].map(d => d.name));
+  const usedNumbers = new Set();
+  const entries = [];
+  const notes = [];
+  const toEntry = (teamId, source) => {
+    const number = usedNumbers.has(String(source.number)) ? String(Number(source.number) + 100) : String(source.number);
+    usedNumbers.add(number);
+    const entry = newEntry(teamId, source.class, number);
+    entry.points = source.points || 0;
+    entry.stats = statsOf(source);
+    entry.drivers = (source.drivers || []).map(driver => ({ ...driver, teamId, entryId: entry.id }));
+    return entry;
+  };
+  // Equipe do jogador
+  const legacyPlayer = old.playerTeam;
+  const playerCars = [legacyPlayer, old.sisterTeam].filter(Boolean);
+  const programs = {};
+  playerCars.forEach(source => {
+    const cls = source.class;
+    if (!programs[cls]) {
+      programs[cls] = { ...newProgram({ ...source.car }), devTokens: source.devTokens ?? null, points: 0, stats: statsOf() };
+    }
+    const program = programs[cls];
+    // Pontos de equipe: melhor carro na Hypercar, soma na LMGT3
+    program.points = CLASS_RULES[cls].teamScoring === "BEST_CAR" ? Math.max(program.points, source.points || 0) : program.points + (source.points || 0);
+    ["wins", "podiums", "poles"].forEach(key => {
+      program.stats[key] = Math.max(program.stats[key], statsOf(source)[key]);
+    });
+    entries.push(toEntry(PLAYER_ID, source));
+  });
+  const playerTeam = {
+    id: PLAYER_ID,
+    name: legacyPlayer.name,
+    color: legacyPlayer.color || PLAYER_COLORS[0],
+    funds: legacyPlayer.funds,
+    sponsors: legacyPlayer.sponsors || [],
+    championships: legacyPlayer.championships || 0,
+    careerWins: legacyPlayer.careerWins || 0,
+    reputation: legacyPlayer.reputation ?? 30,
+    facilities: legacyPlayer.facilities || defaultFacilities(),
+    staff: legacyPlayer.staff || defaultStaff(),
+    ledger: legacyPlayer.ledger || [],
+    programs
+  };
+  // Na LMGT3 a equipe precisa de dois carros
+  if (programs.LMGT3 && entries.filter(entry => entry.class === "LMGT3").length < 2) {
+    const entry = newEntry(PLAYER_ID, "LMGT3", freeNumber({ entries }, "72"));
+    entry.drivers = lineupFor(entry, 68, takenNames);
+    entries.push(entry);
+    notes.push(`Regra nova da LMGT3: a equipe agora inscreve dois carros. O #${entry.number} estreia com pilotos novos.`);
+  }
+  // Equipes da IA
+  const teams = (old.aiTeams || []).map(source => {
+    const tier = source.tier ?? 2;
+    const team = {
+      id: source.id,
+      name: source.name,
+      class: source.class,
+      color: source.color || TEAM_DETAILS[source.name]?.color || "#9ca3af",
+      tier,
+      ai: source.program?.investment ? source.program : createAiProfile(tier),
+      funds: source.funds,
+      support: source.support,
+      annualBudget: source.annualBudget,
+      reputation: source.reputation ?? 85 - tier * 15,
+      championships: source.championships || 0,
+      careerWins: source.careerWins || 0,
+      programs: {
+        [source.class]: { ...newProgram({ ...source.car }), devTokens: source.devTokens ?? null, points: source.points || 0, stats: statsOf(source) }
+      }
+    };
+    entries.push(toEntry(team.id, source));
+    if (source.class === "LMGT3") {
+      const entry = newEntry(team.id, "LMGT3", freeNumber({ entries }, Number(source.number) + 1));
+      const level = Math.round((source.drivers || []).reduce((sum, d) => sum + d.rating, 0) / Math.max(1, (source.drivers || []).length)) || 70;
+      entry.drivers = lineupFor(entry, level, takenNames);
+      entries.push(entry);
+    }
+    return team;
+  });
+  const history = (old.archive?.history || []).map(season => ({
+    ...season,
+    standings: (season.standings || []).map(row => (row.id === "player2" ? { ...row, id: PLAYER_ID } : row))
+  }));
+  let game = {
+    version: GAME_VERSION,
+    season: old.season || 2025,
+    playerTeam,
+    teams,
+    entries,
+    driversPool: (old.driversPool || []).map(driver => ({ ...driver, teamId: null, entryId: null })),
+    staffMarket: old.staffMarket || generateStaffMarket(),
+    raceIndex: old.raceIndex || 0,
+    archive: { history, currentSeasonRaces: old.archive?.currentSeasonRaces || [] },
+    newsFeed: [
+      ...(notes.length
+        ? [{ id: generateId(), type: "NEWS", source: "WEC Official", title: "Novas regras de inscrição", body: notes.join(" "), date: "Atualização", read: false, importance: "HIGH", tags: ["REGULAMENTO"] }]
+        : []),
+      ...(old.newsFeed || [])
+    ],
+    career: {
+      difficulty: old.career?.difficulty || "NORMAL",
+      bopEnabled: old.career?.bopEnabled !== false,
+      confidence: old.career?.confidence ?? 60,
+      seasonsCompleted: old.career?.seasonsCompleted || 0,
+      startSeason: old.career?.startSeason || old.season || 2025,
+      promotions: old.career?.promotions || 0,
+      objectives: {}
+    },
+    settings: { ...DEFAULT_SETTINGS, ...old.settings }
+  };
+  game = withHomologation(game);
+  game.career.objectives = playerObjectives(game);
+  return game;
+};
+
+// Save 4.2: completa o que faltar
+const normalizeSave = raw => {
+  let game = {
+    ...raw,
+    teams: (raw.teams || []).map(team => (team.ai ? team : { ...team, ai: createAiProfile(team.tier ?? 2) })),
+    archive: { history: [], currentSeasonRaces: [], ...raw.archive },
+    career: { objectives: {}, ...raw.career },
+    settings: { ...DEFAULT_SETTINGS, ...raw.settings }
+  };
+  if (Object.values(game.playerTeam.programs || {}).some(program => program.devTokens == null)) {
+    game = withHomologation(game);
+  }
+  return game;
+};
+
+export const migrateSave = raw => {
+  if (!raw || !raw.playerTeam) {
+    throw new Error("Save inválido");
+  }
+  if (raw.version === GAME_VERSION) {
+    return normalizeSave(raw);
+  }
+  if (raw.version === "4.0" || raw.version === "4.1") {
+    return from41(raw);
+  }
+  return from41(legacyTo40(raw));
 };

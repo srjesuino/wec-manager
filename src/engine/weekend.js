@@ -1,46 +1,46 @@
 import { SERIES_CONFIG, TRACKS, WEATHER_SCENARIOS } from "../data/constants.js";
 import { clamp, randRange, pickRandom, pickWeighted } from "../utils/helpers.js";
 import { basePace, carPerformance, driverPaceRating } from "./race.js";
-import { isPlayerId, playerEntries } from "./team.js";
+import { CLASSES } from "../data/constants.js";
+import { classPrograms, gridViews, programKey, teamById } from "./team.js";
 import { aiSetupBonus, aiQualyBonus } from "./ai.js";
 
-export const allTeams = game => [...playerEntries(game), ...game.aiTeams];
-export const classTeams = (game, cls) => allTeams(game).filter(team => team.class === cls);
-
 // ---------------------------------------------------------------------------
-// Balance of Performance: compensa 40% da diferença de carro em relação à média da classe (máx. ±2%)
+// Balance of Performance (por projeto): compensa 40% da diferença de carro em relação à média da classe (máx. ±2%)
 // ---------------------------------------------------------------------------
 
 export const BOP_LIMIT = 2;
 
-export const computeBop = (teams, trackType) => {
+// Devolve { "<equipe>:<classe>": bop } para todos os programas do grid
+export const computeBop = (game, trackType) => {
   const result = {};
-  ["HYPERCAR", "LMGT3"].forEach(cls => {
-    const group = teams.filter(team => team.class === cls);
+  CLASSES.forEach(cls => {
+    const group = classPrograms(game, cls);
     if (!group.length) {
       return;
     }
-    const perf = group.map(team => carPerformance(team.car, trackType));
+    const perf = group.map(item => carPerformance(item.program.car, trackType));
     const avg = perf.reduce((sum, value) => sum + value, 0) / perf.length;
-    group.forEach((team, i) => {
-      result[team.id] = Math.round(clamp(-(perf[i] - avg) * 0.0333, -BOP_LIMIT, BOP_LIMIT) * 100) / 100;
+    group.forEach((item, i) => {
+      result[item.key] = Math.round(clamp(-(perf[i] - avg) * 0.0333, -BOP_LIMIT, BOP_LIMIT) * 100) / 100;
     });
   });
   return result;
 };
+
+export const bopFor = (game, teamId, cls, trackType) => computeBop(game, trackType)[programKey(teamId, cls)] || 0;
 
 // Peso equivalente, só para exibição (penalidade = lastro positivo)
 export const bopWeight = bop => Math.round(-bop * 25);
 
 export const applyBop = (game, track) => {
   const enabled = game.career?.bopEnabled !== false;
-  const bop = enabled ? computeBop(allTeams(game), track.type) : {};
-  return {
-    ...game,
-    playerTeam: { ...game.playerTeam, bop: bop[game.playerTeam.id] || 0 },
-    ...(game.sisterTeam ? { sisterTeam: { ...game.sisterTeam, bop: bop[game.sisterTeam.id] || 0 } } : {}),
-    aiTeams: game.aiTeams.map(team => ({ ...team, bop: bop[team.id] || 0 }))
-  };
+  const bop = enabled ? computeBop(game, track.type) : {};
+  const apply = team => ({
+    ...team,
+    programs: Object.fromEntries(Object.entries(team.programs || {}).map(([cls, program]) => [cls, { ...program, bop: bop[programKey(team.id, cls)] || 0 }]))
+  });
+  return { ...game, playerTeam: apply(game.playerTeam), teams: game.teams.map(apply) };
 };
 
 // ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ export const createWeekend = game => {
   const forecastRain = clamp(base + randRange(-noise, noise) * Math.max(base, 0.1), 0, 1);
   // Acerto da IA: depende da engenharia de cada equipe (e da dificuldade)
   const aiSetup = {};
-  game.aiTeams.forEach(team => {
+  game.teams.forEach(team => {
     aiSetup[team.id] = aiSetupBonus(team, game.career?.difficulty);
   });
   return {
@@ -83,7 +83,7 @@ export const createWeekend = game => {
   };
 };
 
-// Notas de setup/classificação de cada carro do jogador (o carro principal usa setupScore/qualyScore)
+// Notas de setup/classificação de cada carro do jogador, pelo id do carro (setupScore/qualyScore valem para quem não tiver nota)
 export const entrySetupScore = (weekend, id) => weekend.setupScores?.[id] ?? weekend.setupScore ?? 0;
 export const entryQualyScore = (weekend, id) => weekend.qualyScores?.[id] ?? weekend.qualyScore ?? 0;
 export const entryStartTyre = (weekend, id) => weekend.startTyres?.[id] ?? weekend.startTyre;
@@ -101,31 +101,36 @@ export const qualifyingBarFactor = team => 1 - ((team.facilities?.simulator ?? 1
 export const computeQualifying = (game, weekend) => {
   const track = weekend.track;
   const wet = weekend.startWetness;
-  const results = allTeams(game)
-    .map(team => {
-      const cfg = SERIES_CONFIG[team.class];
-      const isPlayer = isPlayerId(team.id);
-      const bestIdx = team.drivers.reduce((best, driver, idx) => (driverPaceRating(driver, wet) > driverPaceRating(team.drivers[best], wet) ? idx : best), 0);
-      // Setup perfeito = 1,3 (a IA de ponta fica perto de 1,0): vale ritmo, mas não compensa um carro muito pior
-      const setupBonus = isPlayer ? 0.3 + entrySetupScore(weekend, team.id) / 100 : weekend.aiSetup[team.id] ?? 0.9;
-      const qualyBonus = isPlayer ? 0.2 + (entryQualyScore(weekend, team.id) / 100) * 0.8 : aiQualyBonus(team);
+  const results = gridViews(game)
+    .map(entry => {
+      const cfg = SERIES_CONFIG[entry.class];
+      const isPlayer = entry.isPlayer;
+      const team = teamById(game, entry.teamId);
+      const bestIdx = entry.drivers.reduce((best, driver, idx) => (driverPaceRating(driver, wet) > driverPaceRating(entry.drivers[best], wet) ? idx : best), 0);
+      // Setup perfeito = 1,3 (a IA de ponta fica perto de 1,0): vale ritmo, mas não compensa um carro muito pior.
+      // Os carros da mesma equipe da IA dividem o acerto (com uma pequena variação entre eles).
+      const setupBonus = isPlayer
+        ? 0.3 + entrySetupScore(weekend, entry.id) / 100
+        : clamp((weekend.aiSetup[entry.teamId] ?? 0.9) + randRange(-0.06, 0.06), 0.3, 1.3);
+      const qualyBonus = isPlayer ? 0.2 + (entryQualyScore(weekend, entry.id) / 100) * 0.8 : aiQualyBonus(team);
       const speed =
         cfg.baseSpeed +
-        carPerformance(team.car, track.type) * 0.05 +
-        driverPaceRating(team.drivers[bestIdx], wet) * 0.04 +
+        carPerformance(entry.car, track.type) * 0.05 +
+        driverPaceRating(entry.drivers[bestIdx], wet) * 0.04 +
         setupBonus * 0.6 +
         qualyBonus +
-        (cfg.baseSpeed * (team.bop || 0)) / 100 +
+        (cfg.baseSpeed * (entry.bop || 0)) / 100 +
         randRange(-0.25, 0.25);
       const wetFactor = wet > 30 ? 0.86 : 1;
       return {
-        teamId: team.id,
-        teamName: team.name,
-        class: team.class,
+        entryId: entry.id,
+        teamId: entry.teamId,
+        teamName: entry.name,
+        class: entry.class,
         isPlayer,
-        color: team.color,
-        number: team.number,
-        driver: team.drivers[bestIdx].name,
+        color: entry.color,
+        number: entry.number,
+        driver: entry.drivers[bestIdx].name,
         setupBonus,
         speed,
         lapTime: (track.length / (speed * wetFactor * 1.02)) * (track.timeScale || 1)
@@ -151,13 +156,13 @@ export const computeQualifying = (game, weekend) => {
 export const createRaceState = (game, weekend) => {
   const track = weekend.track;
   const wet = weekend.startWetness;
-  const byId = new Map(allTeams(game).map(team => [team.id, team]));
+  const byId = new Map(gridViews(game).map(entry => [entry.id, entry]));
   const player = game.playerTeam;
   const engineerStars = player.staff?.raceEngineer?.stars ?? 2;
   const crewStars = player.staff?.crewChief?.stars ?? 2;
   const grid = weekend.qualifying.map((q, index) => {
-    const team = byId.get(q.teamId);
-    const isPlayer = isPlayerId(team.id);
+    const team = byId.get(q.entryId);
+    const isPlayer = team.isPlayer;
     const drivers = team.drivers.map(driver => ({
       id: driver.id,
       name: driver.name,
@@ -168,7 +173,8 @@ export const createRaceState = (game, weekend) => {
     }));
     const tyreStyle = pickRandom(["SOFT", "MEDIUM", "MEDIUM", "HARD"]);
     const entry = {
-      teamId: team.id,
+      entryId: team.id,
+      teamId: team.teamId,
       teamName: team.name,
       class: team.class,
       isPlayer,
@@ -233,6 +239,7 @@ export const createRaceState = (game, weekend) => {
     return entry;
   });
   const playerQs = weekend.qualifying.filter(q => q.isPlayer);
+  const teamOrders = Object.fromEntries(CLASSES.map(cls => [cls, "FREE"]));
   const startText =
     playerQs.length > 1
       ? `Grid definido. ${playerQs.map(q => `#${q.number} larga P${q.classPosition} na ${q.class === "HYPERCAR" ? "Hypercar" : "LMGT3"}`).join(", ")}.`
@@ -257,7 +264,7 @@ export const createRaceState = (game, weekend) => {
     }],
     radio: [],
     radioMemo: {},
-    teamOrders: "FREE",
+    teamOrders,
     fastestLaps: {},
     elapsed: 0,
     leaderLap: 1,

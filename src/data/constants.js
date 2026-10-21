@@ -292,6 +292,7 @@ const BASE_TRACKS = [{
 }];
 
 // Equipes de cada categoria
+// Nomes conhecidos de equipes (o grid padrão usa os primeiros; o resto fica disponível no editor de grid)
 export const TEAM_NAMES = {
   HYPERCAR: ["Toyota Gazoo", "Ferrari AF", "Porsche Penske", "Cadillac Racing", "Alpine Endurance", "BMW M Team", "Peugeot Total", "Lamborghini Iron", "Hertz Team JOTA", "Proton Comp"],
   LMGT3: ["Porsche", "Team WRT", "Ferrari", "Audi Sport", "BMW M", "Alpine", "Aston Martin", "McLaren", "Proton Mustang", "Corvette Racing", "Lexus Racing", "Lamborghini Squadra", "Mercedes-AMG", "Cadillac", "Nissan GT", "Jaguar Racing"]
@@ -389,7 +390,7 @@ export const MEDIA_BACKEND_URL = "https://wec-backend.jesuinodeoliveira97.worker
 // v4.0 — dados ampliados
 // ---------------------------------------------------------------------------
 
-export const GAME_VERSION = "4.1";
+export const GAME_VERSION = "4.2";
 export const SAVE_KEY = "wec_manager_autosave";
 export const SETTINGS_KEY = "wec_manager_settings";
 
@@ -555,11 +556,11 @@ export const DIFFICULTIES = {
   EASY: {
     id: "EASY",
     label: "Fácil",
-    description: "Carro competitivo, mais dinheiro e uma diretoria paciente que nunca demite.",
+    description: "Carro competitivo, mais dinheiro e um conselho paciente que nunca corta carros.",
     startCar: 62,
     startReliability: 78,
     budgetMult: 1.3,
-    canBeFired: false,
+    boardCuts: false,
     confidenceMult: 0.6,
     aiBudget: 0.85,
     aiSetup: -0.1,
@@ -568,11 +569,11 @@ export const DIFFICULTIES = {
   NORMAL: {
     id: "NORMAL",
     label: "Normal",
-    description: "Equipe estreante de meio de grid. A diretoria cobra resultados.",
+    description: "Equipe estreante de meio de grid. O conselho cobra resultados.",
     startCar: 48,
     startReliability: 70,
     budgetMult: 1,
-    canBeFired: true,
+    boardCuts: true,
     confidenceMult: 1,
     aiBudget: 1,
     aiSetup: 0,
@@ -581,11 +582,11 @@ export const DIFFICULTIES = {
   CLASSIC: {
     id: "CLASSIC",
     label: "Clássico",
-    description: "As regras originais: carro nível 25, confiabilidade 60 e diretoria exigente.",
+    description: "As regras originais: carro nível 25, confiabilidade 60 e conselho exigente.",
     startCar: 25,
     startReliability: 60,
     budgetMult: 1,
-    canBeFired: true,
+    boardCuts: true,
     confidenceMult: 1.3,
     aiBudget: 1.1,
     aiSetup: 0.05,
@@ -636,32 +637,32 @@ export const TOKEN_FREE_PARTS = ["crew"];
 
 // Número e cor de cada equipe da IA
 export const TEAM_DETAILS = {
-  "Toyota Gazoo": { number: "8", color: "#ef4444" },
-  "Ferrari AF": { number: "51", color: "#dc2626" },
-  "Porsche Penske": { number: "6", color: "#f5f5f5" },
-  "Cadillac Racing": { number: "2", color: "#facc15" },
-  "Alpine Endurance": { number: "36", color: "#3b82f6" },
-  "BMW M Team": { number: "20", color: "#60a5fa" },
-  "Peugeot Total": { number: "93", color: "#a3e635" },
-  "Lamborghini Iron": { number: "63", color: "#84cc16" },
-  "Hertz Team JOTA": { number: "12", color: "#fde047" },
-  "Proton Comp": { number: "99", color: "#9ca3af" },
-  "Porsche": { number: "92", color: "#e5e7eb" },
-  "Team WRT": { number: "46", color: "#0ea5e9" },
-  "Ferrari": { number: "21", color: "#f87171" },
-  "Audi Sport": { number: "88", color: "#d1d5db" },
-  "BMW M": { number: "31", color: "#2563eb" },
-  "Alpine": { number: "34", color: "#60a5fa" },
-  "Aston Martin": { number: "27", color: "#10b981" },
-  "McLaren": { number: "95", color: "#f97316" },
-  "Proton Mustang": { number: "77", color: "#94a3b8" },
-  "Corvette Racing": { number: "81", color: "#facc15" },
-  "Lexus Racing": { number: "87", color: "#e11d48" },
-  "Lamborghini Squadra": { number: "60", color: "#a3e635" },
-  "Mercedes-AMG": { number: "75", color: "#d4d4d8" },
-  "Cadillac": { number: "33", color: "#fbbf24" },
-  "Nissan GT": { number: "23", color: "#f43f5e" },
-  "Jaguar Racing": { number: "59", color: "#22c55e" }
+  "Toyota Gazoo": { numbers: ["7", "8"], color: "#ef4444" },
+  "Ferrari AF": { numbers: ["50", "51"], color: "#dc2626" },
+  "Porsche Penske": { numbers: ["5", "6"], color: "#f5f5f5" },
+  "Cadillac Racing": { numbers: ["2", "38"], color: "#facc15" },
+  "Alpine Endurance": { numbers: ["35", "36"], color: "#3b82f6" },
+  "BMW M Team": { numbers: ["15", "20"], color: "#60a5fa" },
+  "Peugeot Total": { numbers: ["93", "94"], color: "#a3e635" },
+  "Lamborghini Iron": { numbers: ["63", "64"], color: "#84cc16" },
+  "Hertz Team JOTA": { numbers: ["12", "28"], color: "#fde047" },
+  "Proton Comp": { numbers: ["99", "98"], color: "#9ca3af" },
+  "Porsche": { numbers: ["91", "92"], color: "#e5e7eb" },
+  "Team WRT": { numbers: ["31", "46"], color: "#0ea5e9" },
+  "Ferrari": { numbers: ["21", "54"], color: "#f87171" },
+  "Audi Sport": { numbers: ["44", "45"], color: "#d1d5db" },
+  "BMW M": { numbers: ["30", "32"], color: "#2563eb" },
+  "Alpine": { numbers: ["34", "37"], color: "#60a5fa" },
+  "Aston Martin": { numbers: ["27", "9"], color: "#10b981" },
+  "McLaren": { numbers: ["59", "95"], color: "#f97316" },
+  "Proton Mustang": { numbers: ["77", "88"], color: "#94a3b8" },
+  "Corvette Racing": { numbers: ["33", "81"], color: "#facc15" },
+  "Lexus Racing": { numbers: ["78", "87"], color: "#e11d48" },
+  "Lamborghini Squadra": { numbers: ["60", "85"], color: "#a3e635" },
+  "Mercedes-AMG": { numbers: ["75", "79"], color: "#d4d4d8" },
+  "Cadillac": { numbers: ["3", "13"], color: "#fbbf24" },
+  "Nissan GT": { numbers: ["22", "23"], color: "#f43f5e" },
+  "Jaguar Racing": { numbers: ["24", "25"], color: "#22c55e" }
 };
 
 // Cores disponíveis para a equipe do jogador
@@ -801,37 +802,48 @@ export const PART_LABELS = Object.fromEntries(Object.entries(PART_INFO).map(([ke
 // v4.1 — equipe com dois carros
 // ---------------------------------------------------------------------------
 
-// Programas de corrida da equipe do jogador
-export const PROGRAMS = {
-  SINGLE: {
-    id: "SINGLE",
-    label: "Um carro",
-    description: "O desafio clássico: um carro, três pilotos e todo o orçamento concentrado nele."
-  },
-  SAME_CLASS: {
-    id: "SAME_CLASS",
-    label: "Dois carros na classe",
-    description: "Dois carros na mesma classe, como as equipes de fábrica. O P&D vale para os dois (custa 50% a mais) e você pode dar ordens de equipe."
-  },
-  DUAL_CLASS: {
-    id: "DUAL_CLASS",
-    label: "Programa duplo",
-    description: "Um Hypercar e um LMGT3 na mesma equipe. Dois campeonatos, dois carros para desenvolver e o dobro de pressão."
-  }
+// Regras de cada classe para as equipes:
+// Hypercar: 1 ou 2 carros; no campeonato de equipes só o melhor carro de cada equipe pontua.
+// LMGT3: sempre 2 carros; no campeonato de equipes os dois carros somam pontos.
+export const CLASS_RULES = {
+  HYPERCAR: { minCars: 1, maxCars: 2, teamScoring: "BEST_CAR", label: "Hypercar", short: "HYP" },
+  LMGT3: { minCars: 2, maxCars: 2, teamScoring: "ALL_CARS", label: "LMGT3", short: "GT3" }
 };
-export const PROGRAM_ORDER = ["SINGLE", "SAME_CLASS", "DUAL_CLASS"];
+export const CLASSES = ["HYPERCAR", "LMGT3"];
 
-// Custos e receitas do segundo carro (valores da classe do segundo carro)
-// operations: logística e mecânicos extras por corrida; annualShare: fatia do orçamento anual da classe que a diretoria libera;
-// startShare: fatia do orçamento inicial da classe; entryFee: inscrição ao expandir no meio da carreira
-export const SECOND_CAR = {
-  HYPERCAR: { operations: 350000, annualShare: 0.55, startShare: 0.55, entryFee: 6000000 },
-  LMGT3: { operations: 120000, annualShare: 0.6, startShare: 0.6, entryFee: 2000000 }
+// Grid padrão de uma carreira nova (equipes e quantos carros cada uma inscreve)
+export const DEFAULT_GRID = {
+  HYPERCAR: [
+    { name: "Toyota Gazoo", cars: 2 },
+    { name: "Ferrari AF", cars: 2 },
+    { name: "Porsche Penske", cars: 2 },
+    { name: "Cadillac Racing", cars: 2 },
+    { name: "Alpine Endurance", cars: 2 },
+    { name: "BMW M Team", cars: 2 },
+    { name: "Peugeot Total", cars: 2 },
+    { name: "Lamborghini Iron", cars: 1 },
+    { name: "Hertz Team JOTA", cars: 1 },
+    { name: "Proton Comp", cars: 1 }
+  ],
+  LMGT3: ["Porsche", "Team WRT", "Ferrari", "McLaren", "Aston Martin", "Lexus Racing", "Corvette Racing", "Proton Mustang", "Lamborghini Squadra"].map(name => ({ name, cars: 2 }))
 };
-// P&D compartilhado entre dois carros da mesma classe (peças para os dois)
+
+// Custos e receitas de cada carro além do primeiro da equipe (valores da classe do carro)
+// operations: logística e mecânicos por corrida; budgetShare: fatia extra do orçamento da classe (anual e inicial);
+// entryFee: inscrição de um carro novo na virada da temporada
+export const EXTRA_CAR = {
+  HYPERCAR: { operations: 350000, budgetShare: 0.55, entryFee: 6000000 },
+  LMGT3: { operations: 120000, budgetShare: 0.6, entryFee: 2000000 }
+};
+// Dois carros na mesma classe usam o mesmo projeto: cada upgrade vale para os dois e custa 50% a mais (vale para a IA também)
 export const SHARED_DEV_MULT = 1.5;
-// Patrocinadores pagam mais por dois carros na pista (exposição)
-export const TWO_CAR_SPONSOR_BONUS = 0.15;
+// Patrocinadores pagam mais por carro extra na pista (exposição), até +30%
+export const EXTRA_CAR_SPONSOR_BONUS = 0.1;
+export const MAX_SPONSOR_EXPOSURE = 0.3;
+
+// Corte do conselho: quando a confiança zera, o dono não é demitido; o conselho tira um carro (ou verba, se não der)
+export const BOARD_CUT_BUDGET = 0.7;
+export const CONFIDENCE_AFTER_CUT = 40;
 
 // Ordens de equipe durante a corrida (só valem entre os seus carros da mesma classe)
 export const TEAM_ORDERS = {
